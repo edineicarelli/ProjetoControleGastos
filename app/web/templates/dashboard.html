@@ -1,0 +1,1046 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel Financeiro Inteligente</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+</head>
+<body>
+
+    <!-- Top Navigation -->
+    <header class="navbar">
+        <div class="nav-container">
+            <a href="#" class="brand">
+                <div class="brand-icon">💎</div>
+                <span>Controle Financeiro IA</span>
+            </a>
+
+            <div class="nav-actions">
+                <div class="profile-badge">
+                    <span>🏢</span>
+                    <select class="profile-select" onchange="switchWorkspaceFromWeb(this)">
+                        {% for ws in user_workspaces %}
+                        <option value="{{ ws.id }}" {% if ws.id == current_workspace.id %}selected{% endif %}>
+                            {{ ws.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <button class="btn btn-secondary" onclick="window.location.reload()" title="Atualizar Dados" style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                    🔄 <span>Atualizar</span>
+                </button>
+
+                <button class="btn btn-secondary" onclick="openWorkspaceSettingsModal()" title="Gerenciar Perfis / Contas" style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                    ⚙️ <span>Configuração</span>
+                </button>
+
+                <a href="/export/excel?workspace_id={{ current_workspace.id }}" class="btn btn-secondary" title="Baixar Excel">
+                    📥 Excel
+                </a>
+                <a href="/export/pdf?workspace_id={{ current_workspace.id }}" class="btn btn-secondary" title="Baixar PDF">
+                    📄 PDF
+                </a>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+
+        <!-- Month and Year Navigation / Selector Bar (Controle Mensal) -->
+        <div class="month-navigation-bar">
+            <!-- Year Navigator < 2026 > -->
+            <div class="nav-control-group year-group">
+                <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.year_prev }}&month={{ summary.month }}" 
+                   class="nav-arrow-btn" 
+                   title="Ano Anterior ({{ summary.year_prev }})">
+                   ◀
+                </a>
+                <span class="nav-year-display" title="Ano Selecionado">{{ summary.year }}</span>
+                <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.year_next }}&month={{ summary.month }}" 
+                   class="nav-arrow-btn" 
+                   title="Próximo Ano ({{ summary.year_next }})">
+                   ▶
+                </a>
+            </div>
+
+            <!-- Current Month Badge -->
+            <div class="month-current-badge">
+                <span>📅</span>
+                <span>{{ summary.month_year_label }}</span>
+                {% if summary.is_current_month %}
+                <span class="status-badge active" style="font-size: 0.7rem; padding: 2px 6px;">Mês Atual</span>
+                {% endif %}
+            </div>
+
+            <!-- Month Navigator < [Max 3 Chips] > -->
+            <div class="nav-control-group month-group">
+                <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.prev_year }}&month={{ summary.prev_month }}" 
+                   class="nav-arrow-btn" 
+                   title="Mês Anterior ({{ summary.prev_month }}/{{ summary.prev_year }})">
+                   ◀
+                </a>
+
+                <div class="month-chips-container">
+                    {% for m in summary.months_tabs %}
+                    <a href="?workspace_id={{ current_workspace.id }}&year={{ m.year }}&month={{ m.month }}" 
+                       class="month-chip {% if m.is_selected %}active{% endif %} {% if m.is_current %}is-today-month{% endif %}"
+                       title="{{ m.full_name }} de {{ m.year }}">
+                        {{ m.short_name }}
+                    </a>
+                    {% endfor %}
+                </div>
+
+                <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.next_year }}&month={{ summary.next_month }}" 
+                   class="nav-arrow-btn" 
+                   title="Mês Seguinte ({{ summary.next_month }}/{{ summary.next_year }})">
+                   ▶
+                </a>
+            </div>
+
+            <!-- Action buttons: Mês Atual, Transferência -->
+            <div class="month-nav-actions">
+                {% if not summary.is_current_month %}
+                <a href="?workspace_id={{ current_workspace.id }}" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 0.3rem;" title="Retornar ao mês atual">
+                    📍 <span>Mês Atual</span>
+                </a>
+                {% endif %}
+                <button class="btn btn-primary btn-sm" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.35rem; background: linear-gradient(135deg, #8b5cf6, #6366f1);">
+                    🔄 <span>Transferência</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs Bar -->
+        <nav class="tabs-nav">
+            <button class="tab-btn active" data-tab="tab-dashboard">📊 Dashboard / Visão Geral</button>
+            <button class="tab-btn" data-tab="tab-accounts">💳 Contas & Bancos</button>
+            <button class="tab-btn" data-tab="tab-transactions">📑 Lançamentos & Extrato</button>
+            <button class="tab-btn" data-tab="tab-goals">🎯 Metas & Caixinhas</button>
+            <button class="tab-btn" data-tab="tab-reminders">⏰ Contas & Vencimentos</button>
+            <button class="tab-btn" data-tab="tab-vehicles">🚗 Módulo Veicular</button>
+            <button class="tab-btn" data-tab="tab-shopping">🛒 Lista de Mercado</button>
+        </nav>
+
+        <!-- Tab: Dashboard / Overview -->
+        <section id="tab-dashboard" class="tab-content active">
+            <!-- Metrics Grid -->
+            <div class="metrics-grid">
+                <div class="glass-card metric-card income">
+                    <div class="metric-icon">💰</div>
+                    <div class="metric-info">
+                        <span class="metric-label">Receitas do Mês</span>
+                        <span class="metric-value text-income">{{ summary.total_income | currency_br }}</span>
+                        <span class="metric-tag text-income">🟢 Entradas registradas</span>
+                    </div>
+                </div>
+
+                <div class="glass-card metric-card expense">
+                    <div class="metric-icon">💸</div>
+                    <div class="metric-info">
+                        <span class="metric-label">Despesas do Mês</span>
+                        <span class="metric-value text-expense">{{ summary.total_expense | currency_br }}</span>
+                        <span class="metric-tag text-expense">🔴 Total de saídas</span>
+                    </div>
+                </div>
+
+                <div class="glass-card metric-card balance">
+                    <div class="metric-icon">⚖️</div>
+                    <div class="metric-info">
+                        <span class="metric-label">Saldo Líquido</span>
+                        <span class="metric-value {% if summary.net_balance >= 0 %}text-income{% else %}text-expense{% endif %}">
+                            {{ summary.net_balance | currency_br }}
+                        </span>
+                        <span class="metric-tag text-primary">💼 Balanço atual</span>
+                    </div>
+                </div>
+
+                <div class="glass-card metric-card health">
+                    <div class="metric-icon">🩺</div>
+                    <div class="metric-info">
+                        <span class="metric-label">Saúde Financeira</span>
+                        <span class="metric-value">{{ summary.health_score }}<small style="font-size: 1rem; color: var(--text-muted)">/100</small></span>
+                        <span class="metric-tag" style="color: var(--info)">{{ summary.health_status }}</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts Section -->
+            <div class="charts-grid" style="margin-top: 1.5rem;">
+                <div class="glass-card">
+                    <div class="chart-header">
+                        <h2 class="chart-title">📊 Fluxo de Caixa Mensal</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="cashflowChart"></canvas>
+                    </div>
+                </div>
+
+                <div class="glass-card">
+                    <div class="chart-header">
+                        <h2 class="chart-title">🍕 Gastos por Categoria</h2>
+                    </div>
+                    <div class="chart-wrapper">
+                        <canvas id="categoryChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Quick Overview Cards -->
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
+                <!-- Card: Contas Rápidas -->
+                <div class="glass-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 style="font-size: 1.05rem; font-weight: 700;">💳 Minhas Contas</h3>
+                        <button class="btn btn-secondary btn-sm" onclick="switchTab('tab-accounts')">Gerenciar Contas &rarr;</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                        {% for acc in accounts[:4] %}
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.03); border-radius: var(--radius-sm);">
+                            <span style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span>{{ acc.icon }}</span> <b>{{ acc.name }}</b>
+                            </span>
+                            <span style="font-weight: 700; color: {% if acc.current_balance >= 0 %}var(--income){% else %}var(--expense){% endif %};">
+                                {{ acc.current_balance | currency_br }}
+                            </span>
+                        </div>
+                        {% else %}
+                        <p style="color: var(--text-muted); font-size: 0.85rem;">Nenhuma conta configurada.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Card: Contas a Vencer -->
+                <div class="glass-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 style="font-size: 1.05rem; font-weight: 700;">⏰ Próximos Vencimentos</h3>
+                        <button class="btn btn-secondary btn-sm" onclick="switchTab('tab-reminders')">Ver Todas &rarr;</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                        {% for r in reminders[:3] %}
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.03); border-radius: var(--radius-sm);">
+                            <div>
+                                <b style="display: block; font-size: 0.9rem;">{{ r.title }}</b>
+                                <small style="color: var(--text-secondary);">Vence: {{ r.due_date.strftime('%d/%m/%Y') }}</small>
+                            </div>
+                            <span style="font-weight: 700; color: var(--expense);">
+                                {{ r.amount | currency_br }}
+                            </span>
+                        </div>
+                        {% else %}
+                        <p style="color: var(--text-muted); font-size: 0.85rem;">Nenhuma conta a vencer nos próximos dias! 🎉</p>
+                        {% endfor %}
+                    </div>
+                </div>
+
+                <!-- Card: Últimos Lançamentos -->
+                <div class="glass-card">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                        <h3 style="font-size: 1.05rem; font-weight: 700;">📑 Últimos Lançamentos</h3>
+                        <button class="btn btn-secondary btn-sm" onclick="switchTab('tab-transactions')">Ver Extrato &rarr;</button>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 0.6rem;">
+                        {% for tx in all_transactions[:4] %}
+                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.03); border-radius: var(--radius-sm);">
+                            <div>
+                                <b style="display: block; font-size: 0.9rem;">{{ tx.description }}</b>
+                                <small style="color: var(--text-secondary);">{{ tx.transaction_date.strftime('%d/%m/%Y') }} • {{ tx.category.name if tx.category else 'Outros' }}</small>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="font-weight: 700;" class="{% if tx.type == 'income' %}text-income{% else %}text-expense{% endif %}">
+                                    {% if tx.type == 'income' %}+{% else %}-{% endif %}{{ tx.amount | currency_br }}
+                                </span>
+                                <button class="btn-icon-danger" style="padding: 2px 6px; font-size: 0.75rem;" title="Excluir lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
+                                    🗑️
+                                </button>
+                            </div>
+                        </div>
+                        {% else %}
+                        <p style="color: var(--text-muted); font-size: 0.85rem;">Nenhum lançamento registrado.</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Accounts / Banks -->
+        <section id="tab-accounts" class="tab-content">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+                <div>
+                    <h2 style="font-size: 1.25rem; font-weight: 700;">💳 Contas Bancárias & Carteiras</h2>
+                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.2rem;">Cadastre bancos, carteiras físicas e contas. Saldos são preservados e carregados continuamente entre os meses.</p>
+                </div>
+                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                    <button class="btn btn-secondary" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                        🔄 <span>Transferência Entre Contas</span>
+                    </button>
+                    <button class="btn btn-primary" onclick="openCreateAccountModal()">
+                        ➕ Nova Conta
+                    </button>
+                </div>
+            </div>
+
+            <div class="goals-grid">
+                {% if accounts %}
+                    {% for acc in accounts %}
+                    <div class="glass-card goal-card account-card {% if acc.is_active == False %}inactive-account{% endif %}" id="account-card-{{ acc.id }}">
+                        <div class="goal-header">
+                            <span class="goal-title" style="font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>{{ acc.icon }}</span> {{ acc.name }}
+                            </span>
+                            <div style="display: flex; gap: 0.4rem; align-items: center;">
+                                <span class="category-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
+                                    {{ acc.type|upper }}
+                                </span>
+                                {% if acc.is_active != False %}
+                                    <span class="badge-status active">Ativa</span>
+                                {% else %}
+                                    <span class="badge-status inactive">Inativa</span>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div style="margin: 0.5rem 0;">
+                            <span style="font-size: 0.85rem; color: var(--text-secondary); display: block;">Saldo Atual Acumulado:</span>
+                            <span style="font-size: 1.5rem; font-weight: 700; color: {% if acc.current_balance >= 0 %}var(--income){% else %}var(--expense){% endif %};">
+                                {{ acc.current_balance | currency_br }}
+                            </span>
+                        </div>
+                        <div class="goal-stats">
+                            <span>{{ acc.transactions|length }} lançamentos</span>
+                            <span style="color: var(--text-muted);">Inicial: {{ acc.initial_balance | currency_br }}</span>
+                        </div>
+                        <div class="account-actions">
+                            <button class="btn-sm btn-secondary" onclick='openEditAccountModal({{ acc.id }}, "{{ acc.name|escape }}", "{{ acc.type }}", {{ acc.initial_balance or 0.0 }}, "{{ acc.icon }}", "{{ acc.color }}", {{ "true" if (acc.is_active != False) else "false" }})' title="Editar Conta">
+                                ✏️ Editar
+                            </button>
+                            <button class="btn-sm btn-secondary" onclick="toggleAccountActive({{ acc.id }})" title="Ativar ou Inativar Conta">
+                                {% if acc.is_active != False %}⏸️ Inativar{% else %}▶️ Reativar{% endif %}
+                            </button>
+                            <button class="btn-sm btn-danger-soft" onclick="deleteAccount({{ acc.id }}, '{{ acc.name|escape }}')" title="Excluir Conta">
+                                🗑️ Excluir
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="glass-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 2rem;">
+                        Nenhuma conta configurada. Clique em "➕ Nova Conta" para adicionar!
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Tab: Transactions / Extrato -->
+        <section id="tab-transactions" class="tab-content">
+            <div class="glass-card">
+                <div class="table-toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
+                    <div>
+                        <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin: 0;">📑 Extrato de Lançamentos: {{ summary.month_year_label }}</h2>
+                        <small style="color: var(--text-muted);">{{ all_transactions|length }} lançamentos registrados neste mês</small>
+                    </div>
+
+                    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                        <button class="btn btn-primary btn-sm" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.35rem; background: linear-gradient(135deg, #8b5cf6, #6366f1);">
+                            🔄 <span>Nova Transferência</span>
+                        </button>
+
+                        <input type="text" id="txFilterInput" onkeyup="filterTransactionsTable(this.value)" placeholder="🔍 Buscar lançamento..." class="form-control" style="max-width: 220px; padding: 0.4rem 0.8rem; font-size: 0.85rem;">
+                        
+                        <div id="batchActionToolbar" class="batch-toolbar" style="display: none;">
+                            <span><b id="selectedCount">0</b> selecionados</span>
+                            <button class="btn btn-danger btn-sm" onclick="deleteSelectedTransactions()">
+                                🗑️ Excluir Selecionados
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                <div class="table-container">
+                    <table class="custom-table" id="transactionsTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 40px; text-align: center;">
+                                    <input type="checkbox" id="selectAllTx" onchange="toggleSelectAllTx(this)" style="cursor: pointer; width: 16px; height: 16px;">
+                                </th>
+                                <th>Data</th>
+                                <th>Tipo</th>
+                                <th>Descrição</th>
+                                <th>Categoria</th>
+                                <th>Conta / Pagamento</th>
+                                <th style="text-align: right;">Valor</th>
+                                <th style="width: 60px; text-align: center;">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if all_transactions %}
+                                {% for tx in all_transactions %}
+                                <tr id="tx-row-{{ tx.id }}" class="tx-row-item">
+                                    <td style="text-align: center;">
+                                        <input type="checkbox" class="tx-checkbox" value="{{ tx.id }}" onchange="updateSelectedTxCount()" style="cursor: pointer; width: 16px; height: 16px;">
+                                    </td>
+                                    <td>{{ tx.transaction_date.strftime('%d/%m/%Y') }}</td>
+                                    <td>
+                                        {% if tx.notes and 'transfer' in tx.notes %}
+                                            <span class="badge-transfer" style="padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">
+                                                🔄 {% if tx.type == 'income' %}Entrada Transf.{% else %}Saída Transf.{% endif %}
+                                            </span>
+                                        {% elif tx.type == 'income' %}
+                                            <span style="color: var(--income); font-weight: 600;">+ Entrada</span>
+                                        {% else %}
+                                            <span style="color: var(--expense); font-weight: 600;">- Saída</span>
+                                        {% endif %}
+                                    </td>
+                                    <td style="font-weight: 500;" class="tx-desc">{{ tx.description }}</td>
+                                    <td>
+                                        <span class="category-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
+                                            {{ tx.category.icon if tx.category else '🏷️' }} {{ tx.category.name if tx.category else 'Outros' }}
+                                        </span>
+                                    </td>
+                                    <td>
+                                        {% if tx.account %}
+                                            {{ tx.account.icon }} {{ tx.account.name }}
+                                        {% else %}
+                                            {{ tx.payment_method }}
+                                        {% endif %}
+                                    </td>
+                                    <td style="text-align: right; font-weight: 700;" class="{% if tx.type == 'income' %}text-income{% else %}text-expense{% endif %}">
+                                        {{ tx.amount | currency_br }}
+                                    </td>
+                                    <td style="text-align: center;">
+                                        <button class="btn-icon-danger" title="Excluir este lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
+                                            🗑️
+                                        </button>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            {% else %}
+                                <tr>
+                                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2.5rem 1rem;">
+                                        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🍃</div>
+                                        <div style="font-weight: 600; color: #fff; margin-bottom: 0.25rem;">Nenhum lançamento registrado em {{ summary.month_year_label }}</div>
+                                        <div style="font-size: 0.85rem;">Os lançamentos deste mês estão limpos. Adicione novos lançamentos ou navegue pelos meses anteriores acima.</div>
+                                    </td>
+                                </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- Tab: Goals -->
+        <section id="tab-goals" class="tab-content">
+            <div class="goals-grid">
+                {% if goals %}
+                    {% for g in goals %}
+                    <div class="glass-card goal-card">
+                        <div class="goal-header" style="display: flex; justify-content: space-between; align-items: center;">
+                            <span class="goal-title">{{ g.icon }} {{ g.title }}</span>
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span class="category-tag" style="background: var(--income-bg); color: var(--income);">
+                                    {{ g.progress_percentage }}%
+                                </span>
+                                <button class="btn-icon-danger" title="Excluir esta meta" onclick="deleteGoal({{ g.id }}, '{{ g.title|replace("'", "\\'") }}')">
+                                    🗑️
+                                </button>
+                            </div>
+                        </div>
+                        <div class="progress-track">
+                            <div class="progress-fill" style="width: {{ g.progress_percentage }}%;"></div>
+                        </div>
+                        <div class="goal-stats">
+                            <span>Atual: <b>{{ g.current_amount | currency_br }}</b></span>
+                            <span>Alvo: <b>{{ g.target_amount | currency_br }}</b></span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="glass-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 2rem;">
+                        Nenhuma meta cadastrada. Envie <i>"Guardei 200 pra viagem"</i> no Telegram!
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Tab: Reminders -->
+        <section id="tab-reminders" class="tab-content">
+            <div class="glass-card">
+                <div style="margin-bottom: 1rem;">
+                    <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin: 0;">⏰ Contas e Vencimentos Pendentes</h2>
+                </div>
+                {% if reminders %}
+                    {% for r in reminders %}
+                    <div class="list-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.05);">
+                        <div>
+                            <strong style="display: block; font-size: 1rem;">{{ r.title }}</strong>
+                            <small style="color: var(--text-secondary);">Vencimento: {{ r.due_date.strftime('%d/%m/%Y') }} • {{ '🔴 A Pagar' if r.type == 'to_pay' else '🟢 A Receber' }}</small>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="font-weight: 700; font-size: 1.1rem;">{{ r.amount | currency_br }}</span>
+                            <button class="btn btn-primary" onclick="markReminderPaid({{ r.id }})" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
+                                ✅ Pagar
+                            </button>
+                            <button class="btn-icon-danger" title="Excluir este lembrete" onclick="deleteReminder({{ r.id }}, '{{ r.title|replace("'", "\\'") }}')">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                        Nenhuma conta pendente para os próximos dias!
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Tab: Vehicles -->
+        <section id="tab-vehicles" class="tab-content">
+            <div class="glass-card">
+                {% if vehicle %}
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                    <div>
+                        <h2>🚘 {{ vehicle.name }} <small style="color: var(--text-secondary); font-size: 0.9rem;">({{ vehicle.plate }})</small></h2>
+                        <p style="color: var(--text-secondary); margin-top: 0.25rem;">Odômetro Atual: <b>{{ vehicle.current_km | number_br }} km</b></p>
+                    </div>
+                    {% if vehicle_summary.oil_alert %}
+                    <div class="category-tag" style="background: var(--expense-bg); color: var(--expense); font-size: 0.9rem; padding: 0.6rem 1rem;">
+                        {{ vehicle_summary.oil_alert }}
+                    </div>
+                    {% endif %}
+                </div>
+
+                <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--text-secondary);">Histórico de Manutenções & Abastecimentos</h3>
+                <div class="table-container">
+                    <table class="custom-table">
+                        <thead>
+                            <tr>
+                                <th>Data</th>
+                                <th>Tipo</th>
+                                <th>Descrição</th>
+                                <th>KM</th>
+                                <th style="text-align: right;">Valor</th>
+                                <th style="width: 50px; text-align: center;">Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for m in vehicle_summary.history %}
+                            <tr>
+                                <td>{{ m.date.strftime('%d/%m/%Y') }}</td>
+                                <td><span class="category-tag" style="background: rgba(255, 255, 255, 0.05);">{{ m.type }}</span></td>
+                                <td>{{ m.description }}</td>
+                                <td>{{ m.km | number_br }} km</td>
+                                <td style="text-align: right; font-weight: 600;">{{ m.amount | currency_br }}</td>
+                                <td style="text-align: center;">
+                                    <button class="btn-icon-danger" title="Excluir este registro" onclick="deleteVehicleMaintenance({{ m.id }}, '{{ m.description|replace("'", "\\'") }}')">
+                                        🗑️
+                                    </button>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                                    Nenhum registro veicular adicionado.
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <!-- Tab: Shopping List -->
+        <section id="tab-shopping" class="tab-content">
+            <div class="glass-card">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+                    <h2>🛒 {{ shopping_list.title }}</h2>
+                    <span style="color: var(--text-secondary);">Total Estimado: <b>{{ shopping_list.total_estimated | currency_br }}</b></span>
+                </div>
+
+                {% if shopping_list.items %}
+                    {% for item in shopping_list.items %}
+                    <div class="list-item {% if item.is_checked %}checked{% endif %}" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <input type="checkbox" {% if item.is_checked %}checked{% endif %} onchange="toggleItemFromWeb({{ item.id }})" style="cursor: pointer; width: 18px; height: 18px;">
+                            <span>{{ item.name }} ({{ item.quantity|int }} {{ item.unit }})</span>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                            <span style="color: var(--text-secondary);">
+                                {% if item.estimated_price > 0 %}{{ item.estimated_price | currency_br }}{% endif %}
+                            </span>
+                            <button class="btn-icon-danger" title="Excluir este item" onclick="deleteShoppingItem({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')">
+                                🗑️
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <div style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                        Lista de compras vazia. Adicione itens via Telegram!
+                    </div>
+                {% endif %}
+            </div>
+        </section>
+
+    </main>
+
+    <!-- Modal: Transferência Entre Contas / Bancos / Carteiras -->
+    <div id="transferModal" class="modal-backdrop" onclick="if(event.target === this) closeTransferModal()">
+        <div class="modal-content" style="max-width: 520px;">
+            <div class="modal-header">
+                <h3>🔄 Transferência Entre Contas</h3>
+                <button type="button" class="modal-close" onclick="closeTransferModal()">&times;</button>
+            </div>
+            <form id="transferForm" onsubmit="saveTransferForm(event)">
+                <input type="hidden" id="transferWorkspaceId" value="{{ current_workspace.id }}">
+                <input type="hidden" id="transferUserId" value="{{ user.id if user else 1 }}">
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="transferFromAccount">Conta de Origem (Debitar) *</label>
+                        <select id="transferFromAccount" class="form-control" required>
+                            <option value="">Selecione a conta de origem...</option>
+                            {% for acc in accounts %}
+                            {% if acc.is_active != False %}
+                            <option value="{{ acc.id }}">
+                                {{ acc.icon }} {{ acc.name }} (Saldo: {{ acc.current_balance | currency_br }})
+                            </option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="transferToAccount">Conta de Destino (Creditar) *</label>
+                        <select id="transferToAccount" class="form-control" required>
+                            <option value="">Selecione a conta de destino...</option>
+                            {% for acc in accounts %}
+                            {% if acc.is_active != False %}
+                            <option value="{{ acc.id }}">
+                                {{ acc.icon }} {{ acc.name }} (Saldo: {{ acc.current_balance | currency_br }})
+                            </option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="transferAmount">Valor da Transferência (R$) *</label>
+                        <input type="number" step="0.01" min="0.01" id="transferAmount" class="form-control" placeholder="Ex: 150.00" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="transferDate">Data da Transferência</label>
+                        <input type="date" id="transferDate" class="form-control">
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="transferDescription">Descrição / Motivo (Opcional)</label>
+                    <input type="text" id="transferDescription" class="form-control" placeholder="Ex: Saque para carteira, Pix para reserva, Depósito">
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeTransferModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="transferSubmitBtn" style="background: linear-gradient(135deg, #8b5cf6, #6366f1);">
+                        Confirmar Transferência 🔄
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: Cadastro / Edição de Conta Bancária -->
+    <div id="accountModal" class="modal-backdrop" onclick="if(event.target === this) closeAccountModal()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="accountModalTitle">💳 Nova Conta / Banco</h3>
+                <button type="button" class="modal-close" onclick="closeAccountModal()">&times;</button>
+            </div>
+            <form id="accountForm" onsubmit="saveAccountForm(event)">
+                <input type="hidden" id="accWorkspaceId" value="{{ current_workspace.id }}">
+                <input type="hidden" id="accId" value="">
+
+                <div class="form-group">
+                    <label for="accName">Nome da Conta / Banco *</label>
+                    <input type="text" id="accName" class="form-control" placeholder="Ex: Nubank, Carteira, Banco do Brasil" required>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="accType">Tipo de Conta</label>
+                        <select id="accType" class="form-control">
+                            <option value="checking">Conta Corrente</option>
+                            <option value="savings">Poupança</option>
+                            <option value="credit_card">Cartão de Crédito</option>
+                            <option value="cash">Dinheiro / Carteira</option>
+                            <option value="investment">Investimento</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="accIcon">Ícone / Emoji</label>
+                        <input type="text" id="accIcon" class="form-control" value="🏦" placeholder="🏦">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="accInitialBalance">Saldo Inicial (R$)</label>
+                        <input type="number" step="0.01" id="accInitialBalance" class="form-control" value="0.00">
+                    </div>
+                    <div class="form-group">
+                        <label for="accColor">Cor de Destaque</label>
+                        <input type="color" id="accColor" class="form-control" value="#6366f1" style="height: 42px; padding: 2px 4px; cursor: pointer;">
+                    </div>
+                </div>
+
+                <div class="form-group" id="accActiveGroup" style="display: none; margin-top: 0.5rem;">
+                    <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer;">
+                        <input type="checkbox" id="accIsActive" checked style="width: 18px; height: 18px;">
+                        <span>Conta Ativa</span>
+                    </label>
+                </div>
+
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeAccountModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" id="accSubmitBtn">Salvar Conta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Workspace / Profile Settings Modal -->
+    <!-- Workspace / Profile & User Settings Modal -->
+    <div id="workspaceSettingsModal" class="modal-backdrop" onclick="if(event.target === this) closeWorkspaceSettingsModal()">
+        <div class="modal-card" style="max-width: 720px;">
+            <div class="modal-header">
+                <h3 class="modal-title">⚙️ Configurações do Sistema</h3>
+                <button class="modal-close" onclick="closeWorkspaceSettingsModal()">✕</button>
+            </div>
+
+            <!-- Subtabs Navigation -->
+            <div style="display: flex; gap: 0.5rem; padding: 0.75rem 1.25rem 0; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);">
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-config-profiles" onclick="switchConfigSubTab('profiles')" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-weight: 700; background: var(--primary); color: #fff; border-color: var(--primary);">
+                    🏢 Perfis & Contas ({{ user_workspaces|length }})
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-config-users" onclick="switchConfigSubTab('users')" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-weight: 600;">
+                    👥 Usuários & Acessos ({{ workspace_members|length }})
+                </button>
+            </div>
+
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.25rem; padding: 1.25rem;">
+                
+                <!-- SECTION 1: PERFIS / WORKSPACES -->
+                <div id="config-section-profiles" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                        <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">
+                            Gerencie os perfis financeiros do sistema (Pessoal PF, Empresa PJ, Família, etc.).
+                        </p>
+                        <button type="button" class="btn btn-primary" onclick="toggleNewWorkspaceForm()" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                            ➕ Novo Perfil
+                        </button>
+                    </div>
+
+                    <!-- Form Novo / Editar Perfil (Colapsável) -->
+                    <form id="workspaceForm" onsubmit="saveWorkspaceForm(event)" class="glass-card" style="padding: 1rem; border-radius: 10px; display: none; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);">
+                        <input type="hidden" id="wsId" value="">
+                        <input type="hidden" id="wsUserId" value="{{ user.id if user else 1 }}">
+                        
+                        <h4 id="wsFormTitle" style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary);">➕ Criar Novo Perfil</h4>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 2;">
+                                <label for="wsNameInput">Nome do Perfil / Conta *</label>
+                                <input type="text" id="wsNameInput" class="form-control" placeholder="Ex: Pessoal (PF) - João, Minha Empresa (PJ)" required>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="wsTypeInput">Tipo de Perfil</label>
+                                <select id="wsTypeInput" class="form-control">
+                                    <option value="personal">👤 Pessoal (PF)</option>
+                                    <option value="business">🏢 Empresa (PJ)</option>
+                                    <option value="family">👨‍👩‍👧‍👦 Família</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem;">
+                            <button type="button" class="btn btn-secondary" onclick="hideWorkspaceForm()" style="font-size: 0.85rem; padding: 0.35rem 0.75rem;">Cancelar</button>
+                            <button type="submit" class="btn btn-primary" id="wsSubmitBtn" style="font-size: 0.85rem; padding: 0.35rem 0.85rem;">Salvar Perfil</button>
+                        </div>
+                    </form>
+
+                    <!-- Lista de Perfis Existentes -->
+                    <div class="workspace-list-container">
+                        <h4 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">
+                            Perfis Cadastrados ({{ user_workspaces|length }})
+                        </h4>
+                        <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 320px; overflow-y: auto;">
+                            {% for ws in user_workspaces %}
+                            <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.02); {% if ws.id == current_workspace.id %}border: 1px solid var(--primary);{% else %}border: 1px solid rgba(255,255,255,0.06);{% endif %}">
+                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                    <div style="font-size: 1.3rem;">
+                                        {% if ws.type == 'business' %}🏢{% elif ws.type == 'family' %}👨‍👩‍👧‍👦{% else %}👤{% endif %}
+                                    </div>
+                                    <div>
+                                        <div style="font-weight: 600; color: #fff; font-size: 0.95rem;">
+                                            {{ ws.name }}
+                                            {% if ws.id == current_workspace.id %}
+                                            <span class="status-badge active" style="font-size: 0.7rem; padding: 2px 6px; margin-left: 6px;">Atual</span>
+                                            {% endif %}
+                                        </div>
+                                        <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                            Tipo: 
+                                            {% if ws.type == 'business' %}Empresa (PJ){% elif ws.type == 'family' %}Família (Compartilhado){% else %}Pessoal (PF){% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                    {% if ws.id != current_workspace.id %}
+                                    <button type="button" class="btn btn-secondary" onclick="switchToWorkspace({{ ws.id }})" title="Acessar este perfil" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">
+                                        Acessar
+                                    </button>
+                                    {% endif %}
+                                    <button type="button" class="btn-action edit" onclick="openEditWorkspaceForm({{ ws.id }}, '{{ ws.name|replace("'", "\\'") }}', '{{ ws.type }}')" title="Editar perfil">
+                                        ✏️
+                                    </button>
+                                    <button type="button" class="btn-action delete" onclick="deleteWorkspace({{ ws.id }}, '{{ ws.name|replace("'", "\\'") }}')" title="Excluir perfil" {% if user_workspaces|length <= 1 %}disabled style="opacity: 0.4; cursor: not-allowed;"{% endif %}>
+                                        🗑️
+                                    </button>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SECTION 2: GESTÃO DE USUÁRIOS & ACESSOS (WEB & TELEGRAM) -->
+                <div id="config-section-users" style="display: none; flex-direction: column; gap: 1.25rem;">
+                    
+                    <!-- Invite Code & Fast Share Box -->
+                    <div style="background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.12)); border: 1px solid rgba(99, 102, 241, 0.35); border-radius: var(--radius-md); padding: 1rem 1.15rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+                            <div>
+                                <span style="font-weight: 700; color: #fff; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
+                                    🔗 Link de Convite do Perfil: <span style="color: #a78bfa;">{{ current_workspace.name }}</span>
+                                </span>
+                                <small style="color: var(--text-secondary); display: block; margin-top: 2px;">
+                                    Envie este link para qualquer pessoa começar a lançar gastos neste perfil com 1 clique no Telegram!
+                                </small>
+                            </div>
+                            
+                            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
+                                <button type="button" class="btn btn-primary btn-sm" onclick="copyInviteLink('{{ invite_link }}')" style="display: inline-flex; align-items: center; gap: 0.35rem; background: var(--primary);">
+                                    📋 <span>Copiar Link</span>
+                                </button>
+                                <button type="button" class="btn btn-sm" onclick="shareViaWhatsApp('{{ current_workspace.name }}', '{{ invite_link }}')" style="background: #25D366; color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 0.35rem; border: none;">
+                                    💬 <span>WhatsApp</span>
+                                </button>
+                                <button type="button" class="btn btn-sm" onclick="shareViaTelegram('{{ current_workspace.name }}', '{{ invite_link }}')" style="background: #229ED9; color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 0.35rem; border: none;">
+                                    ✈️ <span>Telegram</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <div style="margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+                            <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem;">
+                                <span>Código de Convite:</span>
+                                <code style="background: rgba(0,0,0,0.5); padding: 0.2rem 0.55rem; border-radius: 4px; color: #818cf8; font-weight: 700; letter-spacing: 0.5px;">{{ current_workspace.invite_code }}</code>
+                                <span>(Comando bot: <code>/entrar {{ current_workspace.invite_code }}</code>)</span>
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="openShareModalForUser('Novo Convidado', '{{ invite_link }}')" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
+                                ✉️ Ver Mensagem Pronta
+                            </button>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <h4 style="font-size: 0.95rem; font-weight: 700; color: #fff; margin: 0;">👥 Usuários com Acesso</h4>
+                            <small style="color: var(--text-muted);">Usuários autorizados a lançar despesas, receitas e consultar o perfil via Web e Telegram.</small>
+                        </div>
+                        <button type="button" class="btn btn-primary" onclick="toggleNewUserForm()" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                            ➕ Adicionar Usuário
+                        </button>
+                    </div>
+
+                    <!-- Form Novo / Editar Usuário (Colapsável) -->
+                    <form id="userMemberForm" onsubmit="saveUserForm(event)" class="glass-card" style="padding: 1rem; border-radius: 10px; display: none; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.1);">
+                        <input type="hidden" id="usrWorkspaceId" value="{{ current_workspace.id }}">
+                        <input type="hidden" id="usrUserId" value="">
+                        
+                        <h4 id="usrFormTitle" style="font-size: 0.95rem; margin-bottom: 0.75rem; color: var(--primary);">➕ Adicionar Novo Usuário</h4>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="usrNameInput">Nome Completo *</label>
+                                <input type="text" id="usrNameInput" class="form-control" placeholder="Ex: Maria Silva, Carlos Sócio" required>
+                            </div>
+                            <div class="form-group">
+                                <label for="usrTelegramInput">Telegram @username ou ID numérico (Opcional)</label>
+                                <input type="text" id="usrTelegramInput" class="form-control" placeholder="Ex: @mariasilva ou 12345678">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label for="usrRoleInput">Papel / Nível de Acesso</label>
+                                <select id="usrRoleInput" class="form-control">
+                                    <option value="member">👤 Membro (Lançar e Consultar)</option>
+                                    <option value="admin">🛡️ Administrador (Acesso Total)</option>
+                                    <option value="owner">👑 Proprietário / Dono</option>
+                                </select>
+                            </div>
+                            <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 0.6rem;">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--text-primary); font-size: 0.9rem;">
+                                    <input type="checkbox" id="usrIsActive" checked style="width: 18px; height: 18px;">
+                                    <span>Usuário Ativo (Acesso Liberado)</span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div style="background: rgba(99, 102, 241, 0.06); border: 1px dashed rgba(99, 102, 241, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
+                            💡 <b>Dica de Envio:</b> Ao salvar o usuário, você receberá a opção de enviar o link de convite imediatamente pelo WhatsApp ou Telegram!
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem;">
+                            <button type="button" class="btn btn-secondary" onclick="hideUserForm()" style="font-size: 0.85rem; padding: 0.35rem 0.75rem;">Cancelar</button>
+                            <button type="submit" class="btn btn-primary" id="usrSubmitBtn" style="font-size: 0.85rem; padding: 0.35rem 0.85rem;">Salvar Usuário & Gerar Convite</button>
+                        </div>
+                    </form>
+
+                    <!-- Lista de Usuários do Workspace -->
+                    <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 320px; overflow-y: auto;">
+                        {% for mem in workspace_members %}
+                        <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);">
+                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                <div style="font-size: 1.4rem;">
+                                    {% if mem.role == 'owner' %}👑{% elif mem.role == 'admin' %}🛡️{% else %}👤{% endif %}
+                                </div>
+                                <div>
+                                    <div style="font-weight: 600; color: #fff; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
+                                        {{ mem.name }}
+                                        {% if mem.role == 'owner' %}
+                                        <span class="category-tag" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; font-size: 0.7rem; padding: 2px 6px;">Proprietário</span>
+                                        {% elif mem.role == 'admin' %}
+                                        <span class="category-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 0.7rem; padding: 2px 6px;">Admin</span>
+                                        {% else %}
+                                        <span class="category-tag" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.7rem; padding: 2px 6px;">Membro</span>
+                                        {% endif %}
+
+                                        {% if mem.is_active != False %}
+                                        <span class="status-badge active" style="font-size: 0.65rem; padding: 1px 5px;">Ativo</span>
+                                        {% else %}
+                                        <span class="badge-status inactive" style="font-size: 0.65rem; padding: 1px 5px;">Inativo</span>
+                                        {% endif %}
+                                    </div>
+                                    <div style="font-size: 0.75rem; color: var(--text-muted);">
+                                        Telegram: {% if mem.username %}<b>@{{ mem.username }}</b>{% else %}<code>{{ mem.telegram_id }}</code>{% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="openShareModalForUser('{{ mem.name|replace("'", "\\'") }}', '{{ invite_link }}')" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.25rem; color: #818cf8;" title="Enviar Link de Convite para este usuário">
+                                    🔗 <span>Convite</span>
+                                </button>
+                                <button type="button" class="btn-action edit" onclick='openEditUserForm({{ mem.id }}, "{{ mem.name|replace("'", "\\'") }}", "{{ mem.username or "" }}", "{{ mem.telegram_id }}", "{{ mem.role }}", {{ "true" if (mem.is_active != False) else "false" }})' title="Editar usuário">
+                                    ✏️
+                                </button>
+                                <button type="button" class="btn-sm btn-secondary" onclick="toggleUserActive({{ mem.id }})" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Ativar ou Inativar Acesso">
+                                    {% if mem.is_active != False %}⏸️{% else %}▶️{% endif %}
+                                </button>
+                                <button type="button" class="btn-action delete" onclick="removeWorkspaceUser({{ mem.id }}, '{{ mem.name|replace("'", "\\'") }}')" title="Remover deste perfil" {% if mem.role == 'owner' and workspace_members|length <= 1 %}disabled style="opacity: 0.4; cursor: not-allowed;"{% endif %}>
+                                    🗑️
+                                </button>
+                            </div>
+                        </div>
+                        {% else %}
+                        <div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                            Nenhum usuário cadastrado neste perfil.
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer" style="margin-top: 1rem;">
+                <button type="button" class="btn btn-secondary" onclick="closeWorkspaceSettingsModal()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Compartilhar Convite de Acesso -->
+    <div id="shareInviteModal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 1200;">
+        <div class="glass-card modal-content" style="max-width: 520px; width: 92%; padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid rgba(99, 102, 241, 0.4); box-shadow: 0 10px 40px rgba(0,0,0,0.6); position: relative;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.75rem; margin-bottom: 1rem;">
+                <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                    🎉 <span>Enviar Convite de Acesso</span>
+                </h3>
+                <button type="button" class="btn-close" onclick="closeShareInviteModal()" style="background: none; border: none; font-size: 1.3rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+            </div>
+
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 1rem;">
+                <p style="color: var(--text-primary); font-size: 0.95rem; margin: 0; line-height: 1.4;">
+                    Envie o link abaixo para <b id="shareTargetName" style="color: #a78bfa;">o usuário</b> ingressar no perfil <b style="color: #fff;">{{ current_workspace.name }}</b> e começar a lançar gastos:
+                </p>
+
+                <!-- Link Display Input with Copy Button -->
+                <div style="display: flex; gap: 0.5rem; align-items: center;">
+                    <input type="text" id="shareInviteLinkInput" readonly value="{{ invite_link }}" class="form-control" style="font-size: 0.85rem; font-family: monospace; background: rgba(0,0,0,0.4); color: #818cf8; font-weight: 600;">
+                    <button type="button" class="btn btn-primary" onclick="copyInviteLinkFromInput()" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 0.35rem;">
+                        📋 <span id="copyBtnText">Copiar</span>
+                    </button>
+                </div>
+
+                <!-- Fast Share Buttons (WhatsApp & Telegram) -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                    <button type="button" class="btn" onclick="shareModalViaWhatsApp('{{ current_workspace.name }}')" style="background: #25D366; color: #fff; font-weight: 700; padding: 0.6rem 1rem; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; gap: 0.5rem; text-decoration: none; border: none; cursor: pointer;">
+                        💬 <span>Enviar no WhatsApp</span>
+                    </button>
+                    <button type="button" class="btn" onclick="shareModalViaTelegram('{{ current_workspace.name }}')" style="background: #229ED9; color: #fff; font-weight: 700; padding: 0.6rem 1rem; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; gap: 0.5rem; text-decoration: none; border: none; cursor: pointer;">
+                        ✈️ <span>Enviar no Telegram</span>
+                    </button>
+                </div>
+
+                <!-- How it works explanation -->
+                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-md); padding: 0.75rem 0.9rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
+                    💡 <b>Como o convidado ingressa:</b><br>
+                    1. Ele clica no link e o Telegram abre o bot <b>@{{ bot_username }}</b>.<br>
+                    2. Ao clicar em <b>COMEÇAR</b> (ou Start), ele é vinculado automaticamente ao perfil <b>{{ current_workspace.name }}</b>.<br>
+                    3. Pronto! Ele já pode enviar gastos e receitas por áudio, fotos e mensagens de texto.
+                </div>
+            </div>
+
+            <div class="modal-footer" style="display: flex; justify-content: flex-end; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.1);">
+                <button type="button" class="btn btn-secondary" onclick="closeShareInviteModal()">Concluir</button>
+            </div>
+        </div>
+    </div>
+    </div>
+
+    <!-- Passing server data to Chart.js safely -->
+    <script>
+        window.currentWorkspaceId = {{ current_workspace.id }};
+        window.dashboardData = {
+            total_income: {{ summary.total_income|tojson }},
+            total_expense: {{ summary.total_expense|tojson }},
+            net_balance: {{ summary.net_balance|tojson }},
+            category_breakdown: {{ summary.category_breakdown|tojson }}
+        };
+
+        // Telegram Web App theme adaptation
+        if (window.Telegram && window.Telegram.WebApp) {
+            window.Telegram.WebApp.ready();
+            window.Telegram.WebApp.expand();
+        }
+    </script>
+    <script src="/static/js/dashboard.js"></script>
+</body>
+</html>

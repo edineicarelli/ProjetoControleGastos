@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  finance-control:
+    image: controle-gastos-ai:latest
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: controle_gastos_app
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      DATABASE_URL: "sqlite:////app/data/finance_control.db"
+      HOST: "0.0.0.0"
+      PORT: "8000"
+      BASE_URL: ${BASE_URL:-http://localhost:8000}
+      DEFAULT_CURRENCY: "R$"
+      DEFAULT_TIMEZONE: "America/Sao_Paulo"
+      UPLOAD_DIR: "/app/uploads"
+    volumes:
+      - finance_data:/app/data
+      - finance_uploads:/app/uploads
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8000/dashboard || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  finance_data:
+    name: controle_gastos_data
+  finance_uploads:
+    name: controle_gastos_uploads

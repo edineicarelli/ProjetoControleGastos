@@ -1,0 +1,37 @@
+# Python Virtual Environment
+venv/
+.venv/
+env/
+ENV/
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environment Variables & Secrets (NUNCA SUBIR O .ENV REAL)
+.env
+
+# SQLite Database
+*.db
+*.sqlite3
+finance_control.db
+
+# Uploads directory contents
+uploads/audio/*
+uploads/receipts/*
+uploads/exports/*
+!uploads/audio/.gitkeep
+!uploads/receipts/.gitkeep
+!uploads/exports/.gitkeep
+
+# IDEs & Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Testing & logs
+.pytest_cache/
+*.log
