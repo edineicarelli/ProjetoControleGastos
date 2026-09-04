@@ -9,14 +9,14 @@ services:
     container_name: controle_gastos_app
     restart: unless-stopped
     ports:
-      - "8000:8000"
+      - "${PORT:-8085}:8000"
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       DATABASE_URL: "sqlite:////app/data/finance_control.db"
       HOST: "0.0.0.0"
       PORT: "8000"
-      BASE_URL: ${BASE_URL:-http://localhost:8000}
+      BASE_URL: ${BASE_URL:-http://localhost:8085}
       DEFAULT_CURRENCY: "R$"
       DEFAULT_TIMEZONE: "America/Sao_Paulo"
       UPLOAD_DIR: "/app/uploads"
