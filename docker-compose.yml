@@ -2,7 +2,6 @@ version: '3.8'
 
 services:
   finance-control:
-    image: controle-gastos-ai:latest
     build:
       context: .
       dockerfile: Dockerfile
