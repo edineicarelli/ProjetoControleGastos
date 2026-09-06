@@ -6,7 +6,11 @@ from app.services.finance_service import FinanceService
 from app.services.reminder_service import ReminderService
 from app.services.shopping_service import ShoppingService
 from app.services.export_service import ExportService
-from app.bot.keyboards import get_profile_inline_keyboard, get_account_detail_keyboard, get_quick_add_accounts_keyboard, get_manage_accounts_keyboard
+from app.bot.keyboards import (
+    get_profile_inline_keyboard, get_account_detail_keyboard,
+    get_quick_add_accounts_keyboard, get_manage_accounts_keyboard,
+    get_reminders_list_keyboard, get_reminder_pay_account_keyboard
+)
 from app.utils import format_currency_br
 
 async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -53,23 +57,121 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                 parse_mode="Markdown"
             )
 
-        # 2. Ações em Lembretes / Contas
+        # 2. Ações em Lembretes / Contas a Pagar
         elif data.startswith("pay_reminder_"):
             r_id = int(data.split("_")[-1])
-            rem = ReminderService.mark_as_paid(db, r_id)
-            if rem:
-                # Registra a transação de despesa automaticamente
-                FinanceService.add_transaction(
+            from app.models import Reminder
+            rem = db.query(Reminder).filter(Reminder.id == r_id).first()
+            if not rem:
+                await query.edit_message_text("❌ Conta/lembrete não encontrado ou já excluído.", parse_mode="Markdown")
+            elif rem.status == "paid":
+                await query.edit_message_text(f"✅ A conta *{rem.title}* já está marcada como PAGA no sistema.", parse_mode="Markdown")
+            else:
+                from app.services.account_service import AccountService
+                accounts = AccountService.get_accounts(db, ws.id, active_only=True)
+                if not accounts:
+                    AccountService.seed_default_accounts(db, ws.id)
+                    accounts = AccountService.get_accounts(db, ws.id, active_only=True)
+
+                tipo_str = "🔴 Conta a Pagar" if rem.type == "to_pay" else "🟢 Conta a Receber"
+                msg = (
+                    f"💳 *Confirmar Pagamento de Conta*\n\n"
+                    f"📝 *{rem.title}*\n"
+                    f"💰 *Valor:* {format_currency_br(rem.amount)} ({tipo_str})\n"
+                    f"📅 *Vencimento:* {rem.due_date.strftime('%d/%m/%Y')}\n\n"
+                    f"👇 *Selecione abaixo de qual conta/banco você debitou este valor:*"
+                )
+                await query.edit_message_text(
+                    msg,
+                    parse_mode="Markdown",
+                    reply_markup=get_reminder_pay_account_keyboard(rem.id, accounts)
+                )
+
+        elif data.startswith("pay_confirm_"):
+            parts = data.split("_")
+            rem_id = int(parts[2])
+            acc_id = int(parts[3])
+            
+            from app.models import Account
+            acc = db.query(Account).filter(Account.id == acc_id).first()
+            rem = ReminderService.mark_as_paid(db, rem_id)
+            
+            if rem and acc:
+                tx = FinanceService.add_transaction(
                     db=db,
                     workspace_id=rem.workspace_id,
                     user_id=user.id,
                     type="expense" if rem.type == "to_pay" else "income",
                     amount=rem.amount,
-                    description=f"Pagamento de conta: {rem.title}",
+                    description=f"Pagamento: {rem.title}",
                     category_name="Contas & Serviços",
-                    payment_method="Boleto/Pix"
+                    payment_method=acc.name,
+                    account_id=acc.id
                 )
-                await query.edit_message_text(f"✅ Conta *{rem.title}* ({format_currency_br(rem.amount)}) marcada como PAGA e lançada no extrato!", parse_mode="Markdown")
+                db.refresh(acc)
+                
+                from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                markup = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("⏰ Ver Outras Contas", callback_data="refresh_reminders"),
+                    InlineKeyboardButton("🌐 Abrir Painel Web", callback_data=f"show_web_link_{user_tg.id}")
+                ]])
+                
+                msg = (
+                    f"✅ *Conta Paga e Lançada no Extrato!*\n\n"
+                    f"📝 *{rem.title}*\n"
+                    f"💰 *Valor:* {format_currency_br(rem.amount)}\n"
+                    f"🏦 *Debitado de:* {acc.icon} {acc.name}\n"
+                    f"💳 *Saldo Atual da Conta:* {format_currency_br(acc.current_balance)}\n"
+                    f"📍 *Perfil:* `{ws.name}`\n\n"
+                    f"✨ _A conta foi baixada na agenda e o lançamento já atualizou seu extrato e saldo no painel web!_"
+                )
+                await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=markup)
+
+        elif data == "refresh_reminders":
+            reminders = ReminderService.get_upcoming_reminders(db, ws.id)
+            if not reminders:
+                await query.edit_message_text(
+                    f"⏰ *Contas e Lembretes - {ws.name}*\n\n"
+                    f"🎉 Nenhuma conta pendente no momento!\nTodas as contas cadastradas estão em dia.",
+                    parse_mode="Markdown"
+                )
+            else:
+                msg = f"⏰ *Contas e Vencimentos Pendentes ({ws.name}):*\n───────────────────\n\n"
+                total_a_pagar = sum(r.amount for r in reminders if r.type == "to_pay")
+                for r in reminders:
+                    tipo_icon = "🔴 A Pagar" if r.type == "to_pay" else "🟢 A Receber"
+                    due_str = r.due_date.strftime("%d/%m/%Y")
+                    msg += f"📝 *{r.title}*\n💰 Valor: *{format_currency_br(r.amount)}* ({tipo_icon})\n📅 Vencimento: *{due_str}*\n\n"
+                if total_a_pagar > 0:
+                    msg += f"───────────────────\n💵 *Total Pendente a Pagar:* {format_currency_br(total_a_pagar)}\n\n"
+                msg += "👇 _Clique no botão abaixo correspondente à conta que deseja marcar como paga:_"
+                await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_reminders_list_keyboard(reminders))
+
+        elif data.startswith("snooze_reminder_"):
+            import datetime
+            r_id = int(data.split("_")[-1])
+            from app.models import Reminder
+            rem = db.query(Reminder).filter(Reminder.id == r_id).first()
+            if rem:
+                rem.due_date = rem.due_date + datetime.timedelta(days=1)
+                db.commit()
+                await query.edit_message_text(
+                    f"⏳ Vencimento de *{rem.title}* adiado em 1 dia (novo vencimento: *{rem.due_date.strftime('%d/%m/%Y')}*)!",
+                    parse_mode="Markdown"
+                )
+
+        elif data.startswith("delete_reminder_"):
+            r_id = int(data.split("_")[-1])
+            from app.models import Reminder
+            rem = db.query(Reminder).filter(Reminder.id == r_id).first()
+            if rem:
+                title = rem.title
+                db.delete(rem)
+                db.commit()
+                await query.edit_message_text(
+                    f"🗑️ Lembrete *{title}* excluído com sucesso da sua agenda!",
+                    parse_mode="Markdown"
+                )
 
         # 3. Lista de Mercado
         elif data.startswith("toggle_item_"):
@@ -114,13 +216,23 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup
             tg_id = data.replace("show_web_link_", "")
             web_url = f"{settings.BASE_URL}/dashboard?user_id={tg_id}"
-            markup = InlineKeyboardMarkup([[
-                InlineKeyboardButton(text="🚀 Abrir Painel Financeiro", url=web_url)
-            ]])
+            
+            # Telegram API rejeita InlineKeyboardButton com 'localhost' ou '127.0.0.1'
+            is_valid_public_url = (
+                settings.BASE_URL.startswith("https://") or 
+                (settings.BASE_URL.startswith("http://") and not any(loc in settings.BASE_URL for loc in ["localhost", "127.0.0.1", "0.0.0.0"]))
+            )
+            markup = None
+            if is_valid_public_url:
+                markup = InlineKeyboardMarkup([[
+                    InlineKeyboardButton(text="🚀 Abrir Painel Financeiro", url=web_url)
+                ]])
+
             await query.message.reply_text(
-                f"🌐 <b>Acesse seu Painel Financeiro Web no link:</b>\n"
-                f"<code>{web_url}</code>\n\n"
-                f"<i>(Abra no seu navegador para ver gráficos completos, relatórios e exportações)</i>",
+                f"🌐 <b>Painel Financeiro Web & Relatórios</b>\n\n"
+                f"Clique no link abaixo para acessar seu painel:\n"
+                f"👉 <b>{web_url}</b>\n\n"
+                f"📊 <i>Abra no navegador do seu computador ou celular para visualizar gráficos interativos, fluxo mensal e relatórios completos!</i>",
                 parse_mode="HTML",
                 reply_markup=markup
             )
@@ -247,6 +359,84 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                 parse_mode="Markdown",
                 reply_markup=get_manage_accounts_keyboard(accounts)
             )
+
+        # 8. Zeramento de Contas e Mês
+        elif data.startswith("prompt_zero_acc_"):
+            acc_id = int(data.split("_")[-1])
+            from app.models import Account
+            from app.bot.keyboards import get_zero_account_confirmation_keyboard
+            acc = db.query(Account).filter(Account.id == acc_id).first()
+            if acc:
+                msg = (
+                    f"⚠️ *Confirmação de Zeramento*\n\n"
+                    f"Deseja realmente zerar todos os lançamentos da conta *{acc.icon} {acc.name}* no mês atual?\n\n"
+                    f"💰 *Saldo Atual:* {format_currency_br(acc.current_balance)}\n"
+                    f"📌 Os lançamentos desta conta no mês atual serão removidos e o saldo recalculado."
+                )
+                await query.edit_message_text(
+                    msg,
+                    parse_mode="Markdown",
+                    reply_markup=get_zero_account_confirmation_keyboard(acc.id)
+                )
+
+        elif data.startswith("confirm_zero_acc_"):
+            acc_id = int(data.split("_")[-1])
+            from app.services.account_service import AccountService
+            from app.models import Account
+            res = AccountService.zero_account(db, ws.id, acc_id)
+            if res.get("success"):
+                acc = res.get("account")
+                msg = (
+                    f"🎉 *Conta Zerada com Sucesso!*\n\n"
+                    f"🏦 *Conta:* {acc.icon} {acc.name}\n"
+                    f"💰 *Novo Saldo:* {format_currency_br(acc.current_balance)}\n"
+                    f"🗑️ *Registros Removidos:* {res.get('deleted_count', 0)} no mês {res.get('month'):02d}/{res.get('year')}\n\n"
+                    f"Seu extrato e saldo consolidado foram atualizados!"
+                )
+                await query.edit_message_text(
+                    msg,
+                    parse_mode="Markdown",
+                    reply_markup=get_account_detail_keyboard(acc)
+                )
+            else:
+                await query.edit_message_text(f"❌ {res.get('message', 'Erro ao zerar conta.')}", parse_mode="Markdown")
+
+        elif data == "prompt_zero_all_month":
+            from app.bot.keyboards import get_zero_all_month_confirmation_keyboard
+            import datetime
+            now = datetime.datetime.utcnow()
+            msg = (
+                f"🚨 *ATENÇÃO: Zerar Mês Atual*\n\n"
+                f"Deseja realmente zerar **TODOS OS LANÇAMENTOS** do mês *{now.month:02d}/{now.year}* no perfil *{ws.name}*?\n\n"
+                f"⚠️ Todas as receitas e despesas deste mês serão excluídas e os saldos das contas recalculados. Esta ação não poderá ser desfeita!"
+            )
+            await query.edit_message_text(
+                msg,
+                parse_mode="Markdown",
+                reply_markup=get_zero_all_month_confirmation_keyboard()
+            )
+
+        elif data == "confirm_zero_all_month":
+            from app.services.account_service import AccountService
+            res = AccountService.zero_monthly_transactions(db, ws.id)
+            msg = (
+                f"💥 *Mês Zerado com Sucesso!*\n\n"
+                f"📅 Mês: *{res.get('month'):02d}/{res.get('year')}*\n"
+                f"🗑️ Total de registros excluídos: *{res.get('deleted_count', 0)}*\n"
+                f"💰 Todos os saldos foram recalculados do zero para este mês."
+            )
+            from app.bot.keyboards import get_dashboard_link_keyboard
+            await query.edit_message_text(
+                msg,
+                parse_mode="Markdown",
+                reply_markup=get_dashboard_link_keyboard(str(user_tg.id))
+            )
+
+        elif data == "close_message":
+            try:
+                await query.message.delete()
+            except Exception:
+                await query.edit_message_text("Operação cancelada.")
 
         elif data == "add_account_prompt":
             msg = (

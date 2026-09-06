@@ -6,7 +6,7 @@ from app.services.reminder_service import ReminderService
 from app.services.goal_service import GoalService
 from app.services.vehicle_service import VehicleService
 from app.services.shopping_service import ShoppingService
-from app.bot.keyboards import get_profile_inline_keyboard, get_dashboard_link_keyboard, get_reminder_action_keyboard, get_extrato_keyboard
+from app.bot.keyboards import get_profile_inline_keyboard, get_dashboard_link_keyboard, get_reminder_action_keyboard, get_reminders_list_keyboard, get_extrato_keyboard
 from app.utils import format_currency_br, format_number_br
 
 async def saldo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -104,22 +104,29 @@ async def lembretes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not reminders:
             msg = (
                 f"⏰ *Contas e Lembretes - {ws.name}*\n\n"
-                f"✅ Você não tem nenhuma conta pendente para os próximos 30 dias!\n\n"
-                f"💡 _Para cadastrar: Envie 'Lembrar de pagar luz 150 dia 10'_"
+                f"🎉 Nenhuma conta pendente para os próximos dias!\n"
+                f"Todas as contas cadastradas estão em dia.\n\n"
+                f"💡 _Para cadastrar uma nova conta: Envie 'Lembrar de pagar luz 150 dia 10' ou envie o PDF do boleto._"
             )
             await update.message.reply_text(msg, parse_mode="Markdown")
             return
 
-        msg = f"⏰ *Contas e Vencimentos Pendentes ({ws.name}):*\n───────────────────\n"
+        msg = f"⏰ *Contas e Vencimentos Pendentes ({ws.name}):*\n───────────────────\n\n"
+        total_a_pagar = sum(r.amount for r in reminders if r.type == "to_pay")
+        
         for r in reminders:
-            tipo_icon = "🔴 Pagar" if r.type == "to_pay" else "🟢 Receber"
+            tipo_icon = "🔴 A Pagar" if r.type == "to_pay" else "🟢 A Receber"
             due_str = r.due_date.strftime("%d/%m/%Y")
-            msg += f"{tipo_icon}: *{r.title}* - {format_currency_br(r.amount)}\n📅 Vence em: *{due_str}*\n\n"
+            msg += f"📝 *{r.title}*\n💰 Valor: *{format_currency_br(r.amount)}* ({tipo_icon})\n📅 Vencimento: *{due_str}*\n\n"
+
+        if total_a_pagar > 0:
+            msg += f"───────────────────\n💵 *Total Pendente a Pagar:* {format_currency_br(total_a_pagar)}\n\n"
+        msg += "👇 _Clique no botão abaixo correspondente à conta que deseja marcar como paga:_"
 
         await update.message.reply_text(
             msg,
             parse_mode="Markdown",
-            reply_markup=get_reminder_action_keyboard(reminders[0].id)
+            reply_markup=get_reminders_list_keyboard(reminders)
         )
     finally:
         db.close()
@@ -291,6 +298,48 @@ async def entrar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"❌ Código de convite `{code}` não encontrado ou inválido. Verifique com o administrador.",
                 parse_mode="Markdown"
             )
+    finally:
+        db.close()
+
+async def zerar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /zerar ou /zerarconta para zerar o valor e lançamentos da conta ou do mês"""
+    user_tg = update.effective_user
+    db = SessionLocal()
+    try:
+        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        from app.services.account_service import AccountService
+        from app.bot.keyboards import get_zero_selection_keyboard, get_zero_account_confirmation_keyboard
+
+        accounts = AccountService.get_accounts(db, ws.id, active_only=True)
+
+        # Se passou o nome de uma conta específica como argumento (ex: /zerar nubank)
+        if context.args and len(context.args) > 0:
+            target_name = " ".join(context.args).strip()
+            acc = AccountService.find_account_by_name(db, ws.id, target_name)
+            if acc:
+                msg = (
+                    f"⚠️ *Confirmação de Zeramento*\n\n"
+                    f"Deseja realmente zerar todos os lançamentos da conta *{acc.icon} {acc.name}* no mês atual?\n\n"
+                    f"💰 *Saldo Atual:* {format_currency_br(acc.current_balance)}\n"
+                    f"📌 As transações desta conta no mês atual serão removidas e o saldo recalculado."
+                )
+                await update.message.reply_text(
+                    msg,
+                    parse_mode="Markdown",
+                    reply_markup=get_zero_account_confirmation_keyboard(acc.id)
+                )
+                return
+
+        msg = (
+            f"🧹 *Zerar Conta / Lançamentos do Mês*\n"
+            f"📍 *Contexto:* `{ws.name}`\n\n"
+            f"Selecione abaixo qual conta você deseja zerar no mês atual ou escolha zerar todo o extrato mensal:"
+        )
+        await update.message.reply_text(
+            msg,
+            parse_mode="Markdown",
+            reply_markup=get_zero_selection_keyboard(accounts)
+        )
     finally:
         db.close()
 

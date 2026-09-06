@@ -43,6 +43,13 @@ function switchTab(tabId) {
         console.error(e);
     }
 
+    if (window.innerWidth <= 1024) {
+        const sidebar = document.getElementById('appSidebar');
+        const backdrop = document.getElementById('sidebarBackdrop');
+        if (sidebar) sidebar.classList.remove('open');
+        if (backdrop) backdrop.classList.remove('active');
+    }
+
     if (tabId === 'tab-dashboard') {
         setTimeout(() => {
             initCharts();
@@ -213,57 +220,154 @@ async function markReminderPaid(remId) {
 /* ========================================================
    GESTÃO DE CONTAS BANCÁRIAS (CRUD & ATIVAÇÃO/INATIVAÇÃO)
    ======================================================== */
-function openCreateAccountModal() {
-    document.getElementById('accountModalTitle').textContent = '➕ Nova Conta / Banco';
-    document.getElementById('accSubmitBtn').textContent = 'Cadastrar Conta';
-    document.getElementById('accId').value = '';
-    document.getElementById('accName').value = '';
-    document.getElementById('accType').value = 'checking';
-    document.getElementById('accIcon').value = '🏦';
-    document.getElementById('accColor').value = '#6366f1';
-    document.getElementById('accInitialBalance').value = '0.00';
-    document.getElementById('accActiveGroup').style.display = 'none';
-    document.getElementById('accIsActive').checked = true;
+function selectBankPreset(name, icon, color, type = 'checking') {
+    const accName = document.getElementById('accName');
+    const accIcon = document.getElementById('accIcon');
+    const accColor = document.getElementById('accColor');
+    const accType = document.getElementById('accType');
+
+    if (accName) accName.value = name;
+    if (accIcon) accIcon.value = icon;
+    if (accColor) accColor.value = color;
+    if (accType && type) accType.value = type;
+
+    updateAccountPreview();
+}
+
+function selectAccountEmoji(emoji) {
+    const accIcon = document.getElementById('accIcon');
+    if (accIcon) {
+        accIcon.value = emoji;
+        updateAccountPreview();
+    }
+}
+
+function updateAccountPreview() {
+    const name = document.getElementById('accName')?.value.trim() || 'Nome da Conta';
+    const icon = document.getElementById('accIcon')?.value.trim() || '🏦';
+    const color = document.getElementById('accColor')?.value || '#6366f1';
+    const typeSelect = document.getElementById('accType');
+    const typeText = typeSelect?.options[typeSelect.selectedIndex]?.text || 'Conta Corrente';
+
+    const prevCard = document.getElementById('accPreviewCard');
+    const prevIcon = document.getElementById('accPreviewIcon');
+    const prevName = document.getElementById('accPreviewName');
+    const prevType = document.getElementById('accPreviewType');
+    const prevColor = document.getElementById('accPreviewColorBadge');
+
+    if (prevCard) prevCard.style.borderLeftColor = color;
+    if (prevIcon) prevIcon.textContent = icon;
+    if (prevName) prevName.textContent = name;
+    if (prevType) prevType.textContent = typeText.toUpperCase();
+    if (prevColor) prevColor.style.background = color;
+}
+
+function openCreateAccountModal(wsId = null) {
+    const title = document.getElementById('accountModalTitle');
+    if (title) title.textContent = '➕ Nova Conta / Banco';
+    const btn = document.getElementById('accSubmitBtn');
+    if (btn) btn.textContent = 'Cadastrar Conta';
+    const accId = document.getElementById('accId');
+    if (accId) accId.value = '';
+    const accName = document.getElementById('accName');
+    if (accName) accName.value = '';
+    const accType = document.getElementById('accType');
+    if (accType) accType.value = 'checking';
+    const accIcon = document.getElementById('accIcon');
+    if (accIcon) accIcon.value = '🏦';
+    const accColor = document.getElementById('accColor');
+    if (accColor) accColor.value = '#6366f1';
+    const accInitialBalance = document.getElementById('accInitialBalance');
+    if (accInitialBalance) accInitialBalance.value = '0.00';
+    const accActiveGroup = document.getElementById('accActiveGroup');
+    if (accActiveGroup) accActiveGroup.style.display = 'none';
+    const accIsActive = document.getElementById('accIsActive');
+    if (accIsActive) accIsActive.checked = true;
+
+    if (wsId) {
+        const wsInput = document.getElementById('accWorkspaceId');
+        if (wsInput) wsInput.value = wsId;
+    }
+
+    updateAccountPreview();
 
     const modal = document.getElementById('accountModal');
-    if (modal) modal.classList.add('show');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('show');
+    }
 }
 
 function openEditAccountModal(id, name, type, initialBalance, icon, color, isActive) {
-    document.getElementById('accountModalTitle').textContent = '✏️ Editar Conta / Banco';
-    document.getElementById('accSubmitBtn').textContent = 'Salvar Alterações';
-    document.getElementById('accId').value = id;
-    document.getElementById('accName').value = name;
-    document.getElementById('accType').value = type || 'checking';
-    document.getElementById('accIcon').value = icon || '🏦';
-    document.getElementById('accColor').value = color || '#6366f1';
-    document.getElementById('accInitialBalance').value = Number(initialBalance || 0).toFixed(2);
-    document.getElementById('accActiveGroup').style.display = 'block';
-    document.getElementById('accIsActive').checked = (isActive !== false && isActive !== 'false');
+    const title = document.getElementById('accountModalTitle');
+    if (title) title.textContent = '✏️ Editar Conta / Banco';
+    const btn = document.getElementById('accSubmitBtn');
+    if (btn) btn.textContent = 'Salvar Alterações';
+    const accId = document.getElementById('accId');
+    if (accId) accId.value = id;
+    const accName = document.getElementById('accName');
+    if (accName) accName.value = name;
+    const accType = document.getElementById('accType');
+    if (accType) accType.value = type || 'checking';
+    const accIcon = document.getElementById('accIcon');
+    if (accIcon) accIcon.value = icon || '🏦';
+    const accColor = document.getElementById('accColor');
+    if (accColor) accColor.value = color || '#6366f1';
+    const accInitialBalance = document.getElementById('accInitialBalance');
+    if (accInitialBalance) accInitialBalance.value = Number(initialBalance || 0).toFixed(2);
+    const accActiveGroup = document.getElementById('accActiveGroup');
+    if (accActiveGroup) accActiveGroup.style.display = 'block';
+    const accIsActive = document.getElementById('accIsActive');
+    if (accIsActive) accIsActive.checked = (isActive !== false && isActive !== 'false');
+
+    updateAccountPreview();
 
     const modal = document.getElementById('accountModal');
-    if (modal) modal.classList.add('show');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('show');
+    }
 }
 
 function closeAccountModal() {
     const modal = document.getElementById('accountModal');
-    if (modal) modal.classList.remove('show');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('show');
+    }
 }
 
 async function saveAccountForm(e) {
-    e.preventDefault();
-    const id = document.getElementById('accId').value;
-    const workspaceId = parseInt(document.getElementById('accWorkspaceId').value, 10);
-    const name = document.getElementById('accName').value.trim();
-    const type = document.getElementById('accType').value;
-    const icon = document.getElementById('accIcon').value.trim() || '🏦';
-    const color = document.getElementById('accColor').value;
-    const initialBalance = parseFloat(document.getElementById('accInitialBalance').value) || 0.0;
-    const isActive = document.getElementById('accIsActive').checked;
+    if (e) e.preventDefault();
+    const id = document.getElementById('accId')?.value;
+    
+    let workspaceId = parseInt(document.getElementById('accWorkspaceId')?.value, 10);
+    if (!workspaceId || isNaN(workspaceId)) {
+        const urlParams = new URLSearchParams(window.location.search);
+        workspaceId = parseInt(urlParams.get('workspace_id'), 10);
+    }
+    if (!workspaceId || isNaN(workspaceId)) {
+        workspaceId = parseInt(document.getElementById('usrWorkspaceId')?.value, 10);
+    }
+
+    const nameInput = document.getElementById('accName');
+    const name = nameInput ? nameInput.value.trim() : '';
+    const type = document.getElementById('accType')?.value || 'checking';
+    const icon = document.getElementById('accIcon')?.value.trim() || '🏦';
+    const color = document.getElementById('accColor')?.value || '#6366f1';
+    const initBalInput = document.getElementById('accInitialBalance');
+    const initialBalance = initBalInput ? (parseFloat(initBalInput.value) || 0.0) : 0.0;
+    const isActive = document.getElementById('accIsActive')?.checked ?? true;
 
     if (!name) {
         alert('Por favor, informe o nome da conta.');
         return;
+    }
+
+    const submitBtn = document.getElementById('accSubmitBtn');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Salvando...';
     }
 
     try {
@@ -281,38 +385,52 @@ async function saveAccountForm(e) {
                     is_active: isActive
                 })
             });
-            if (res.ok) {
+            const data = await res.json();
+            if (res.ok && data.success) {
                 localStorage.setItem('active_dashboard_tab', 'tab-accounts');
                 window.location.reload();
             } else {
-                const err = await res.json();
-                alert(err.detail || 'Erro ao atualizar conta.');
+                const errMsg = typeof data.detail === 'string' ? data.detail : (data.message || 'Erro ao atualizar conta.');
+                alert(errMsg);
             }
         } else {
             // Criação (POST)
+            const payload = {
+                name: name,
+                type: type,
+                icon: icon,
+                color: color,
+                initial_balance: initialBalance
+            };
+            if (workspaceId && !isNaN(workspaceId)) {
+                payload.workspace_id = workspaceId;
+            }
+
             const res = await fetch('/api/accounts', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    workspace_id: workspaceId,
-                    name: name,
-                    type: type,
-                    icon: icon,
-                    color: color,
-                    initial_balance: initialBalance
-                })
+                body: JSON.stringify(payload)
             });
-            if (res.ok) {
+            const data = await res.json();
+            if (res.ok && data.success) {
                 localStorage.setItem('active_dashboard_tab', 'tab-accounts');
                 window.location.reload();
             } else {
-                const err = await res.json();
-                alert(err.detail || 'Erro ao cadastrar conta.');
+                let errMsg = 'Erro ao cadastrar conta.';
+                if (typeof data.detail === 'string') errMsg = data.detail;
+                else if (Array.isArray(data.detail)) errMsg = data.detail.map(d => d.msg || d).join(', ');
+                else if (data.message) errMsg = data.message;
+                alert(errMsg);
             }
         }
     } catch (err) {
         console.error(err);
-        alert('Erro de comunicação com o servidor.');
+        alert('Erro de comunicação com o servidor ao salvar conta.');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.textContent = id ? 'Salvar Alterações' : 'Cadastrar Conta';
+        }
     }
 }
 
@@ -348,6 +466,63 @@ async function deleteAccount(accId, name) {
     }
 }
 
+async function confirmZeroAccount(accId, name, year = null, month = null) {
+    const wsId = document.getElementById('usrWorkspaceId')?.value || 
+                 new URLSearchParams(window.location.search).get('workspace_id') || 
+                 document.getElementById('editTxWorkspaceId')?.value || 
+                 '1';
+                 
+    const monthLabel = year && month ? `${String(month).padStart(2, '0')}/${year}` : 'neste mês';
+
+    if (!confirm(`⚠️ Deseja realmente ZERAR as movimentações da conta "${name}" em ${monthLabel}?\n\nIsso removerá as transações vinculadas a esta conta no mês selecionado e recalculará o saldo.`)) {
+        return;
+    }
+
+    try {
+        let url = `/api/accounts/${accId}/zero?workspace_id=${wsId}`;
+        if (year && month) {
+            url += `&year=${year}&month=${month}`;
+        }
+        const res = await fetch(url, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert(data.message || 'Conta zerada com sucesso!');
+            localStorage.setItem('active_dashboard_tab', 'tab-accounts');
+            window.location.reload();
+        } else {
+            alert(data.detail || data.message || 'Erro ao zerar conta.');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Erro de comunicação ao zerar conta.');
+    }
+}
+
+async function confirmZeroMonth(wsId, monthLabel, year = null, month = null) {
+    if (!confirm(`🚨 ATENÇÃO: Deseja realmente ZERAR TODOS OS LANÇAMENTOS do mês "${monthLabel}"?\n\nTodas as receitas e despesas deste mês serão excluídas e os saldos recalculados. Esta ação não pode ser desfeita!`)) {
+        return;
+    }
+
+    try {
+        let url = `/api/workspaces/${wsId}/zero-month`;
+        if (year && month) {
+            url += `?year=${year}&month=${month}`;
+        }
+        const res = await fetch(url, { method: 'POST' });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert(data.message || 'Mês zerado com sucesso!');
+            localStorage.setItem('active_dashboard_tab', 'tab-transactions');
+            window.location.reload();
+        } else {
+            alert(data.detail || data.message || 'Erro ao zerar mês.');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Erro de comunicação ao zerar mês.');
+    }
+}
+
 /* ========================================================
    TRANSFERÊNCIA ENTRE CONTAS E CARTEIRAS
    ======================================================== */
@@ -369,6 +544,7 @@ function openTransferModal(fromAccId = null, toAccId = null) {
     if (fromSelect && fromAccId) fromSelect.value = fromAccId;
     if (toSelect && toAccId) toSelect.value = toAccId;
 
+    modal.style.display = 'flex';
     modal.classList.add('show');
     setTimeout(() => {
         if (amountInput) amountInput.focus();
@@ -378,6 +554,7 @@ function openTransferModal(fromAccId = null, toAccId = null) {
 function closeTransferModal() {
     const modal = document.getElementById('transferModal');
     if (modal) {
+        modal.style.display = 'none';
         modal.classList.remove('show');
     }
 }
@@ -532,6 +709,7 @@ function openWorkspaceSettingsModal(subtab = null) {
     hideUserForm();
     const modal = document.getElementById('workspaceSettingsModal');
     if (modal) {
+        modal.style.display = 'flex';
         modal.classList.add('show');
         localStorage.setItem('open_workspace_settings_modal', 'true');
         const activeSubtab = subtab || localStorage.getItem('active_config_subtab') || 'profiles';
@@ -542,6 +720,7 @@ function openWorkspaceSettingsModal(subtab = null) {
 function closeWorkspaceSettingsModal() {
     const modal = document.getElementById('workspaceSettingsModal');
     if (modal) {
+        modal.style.display = 'none';
         modal.classList.remove('show');
         localStorage.removeItem('open_workspace_settings_modal');
     }
@@ -552,35 +731,45 @@ function switchConfigSubTab(tabName) {
 
     const secProfiles = document.getElementById('config-section-profiles');
     const secUsers = document.getElementById('config-section-users');
+    const secTokens = document.getElementById('config-section-tokens');
+    
     const btnProfiles = document.getElementById('btn-config-profiles');
     const btnUsers = document.getElementById('btn-config-users');
+    const btnTokens = document.getElementById('btn-config-tokens');
+
+    // Reset all tabs
+    if (secProfiles) secProfiles.style.display = 'none';
+    if (secUsers) secUsers.style.display = 'none';
+    if (secTokens) secTokens.style.display = 'none';
+
+    const inactiveBtn = (btn) => {
+        if (!btn) return;
+        btn.style.background = 'transparent';
+        btn.style.color = 'var(--text-secondary)';
+        btn.style.borderColor = 'transparent';
+    };
+
+    const activeBtn = (btn) => {
+        if (!btn) return;
+        btn.style.background = 'var(--primary)';
+        btn.style.color = '#fff';
+        btn.style.borderColor = 'var(--primary)';
+    };
+
+    inactiveBtn(btnProfiles);
+    inactiveBtn(btnUsers);
+    inactiveBtn(btnTokens);
 
     if (tabName === 'users') {
-        if (secProfiles) secProfiles.style.display = 'none';
         if (secUsers) secUsers.style.display = 'flex';
-        if (btnProfiles) {
-            btnProfiles.style.background = 'transparent';
-            btnProfiles.style.color = 'var(--text-secondary)';
-            btnProfiles.style.borderColor = 'transparent';
-        }
-        if (btnUsers) {
-            btnUsers.style.background = 'var(--primary)';
-            btnUsers.style.color = '#fff';
-            btnUsers.style.borderColor = 'var(--primary)';
-        }
+        activeBtn(btnUsers);
+    } else if (tabName === 'tokens') {
+        if (secTokens) secTokens.style.display = 'flex';
+        activeBtn(btnTokens);
+        loadSystemTokens();
     } else {
         if (secProfiles) secProfiles.style.display = 'flex';
-        if (secUsers) secUsers.style.display = 'none';
-        if (btnProfiles) {
-            btnProfiles.style.background = 'var(--primary)';
-            btnProfiles.style.color = '#fff';
-            btnProfiles.style.borderColor = 'var(--primary)';
-        }
-        if (btnUsers) {
-            btnUsers.style.background = 'transparent';
-            btnUsers.style.color = 'var(--text-secondary)';
-            btnUsers.style.borderColor = 'transparent';
-        }
+        activeBtn(btnProfiles);
     }
 }
 
@@ -1121,4 +1310,331 @@ function triggerLiveReload() {
     window.location.reload();
 }
 
+/* ========================================================
+   GESTÃO DE TOKENS & CONEXÕES (TELEGRAM & GEMINI IA)
+   ======================================================== */
+
+function toggleTokenVisibility(inputId, iconId) {
+    const input = document.getElementById(inputId);
+    const icon = document.getElementById(iconId);
+    if (!input) return;
+    if (input.type === 'password') {
+        input.type = 'text';
+        if (icon) icon.textContent = '🙈';
+    } else {
+        input.type = 'password';
+        if (icon) icon.textContent = '👁️';
+    }
+}
+
+async function loadSystemTokens() {
+    const tgBadge = document.getElementById('telegramStatusBadge');
+    const gemBadge = document.getElementById('geminiStatusBadge');
+    const tgInput = document.getElementById('cfgTelegramToken');
+    const gemInput = document.getElementById('cfgGeminiKey');
+
+    try {
+        const res = await fetch('/api/system/tokens');
+        if (res.ok) {
+            const data = await res.json();
+            
+            if (tgInput) tgInput.value = data.telegram_token_raw || '';
+            if (gemInput) gemInput.value = data.gemini_key_raw || '';
+
+            if (tgBadge) {
+                if (data.has_telegram) {
+                    tgBadge.textContent = '🟢 Configurado (' + (data.telegram_token_masked || 'Ativo') + ')';
+                    tgBadge.style.background = 'rgba(16, 185, 129, 0.15)';
+                    tgBadge.style.color = '#34d399';
+                } else {
+                    tgBadge.textContent = '🟡 Não Configurado';
+                    tgBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+                    tgBadge.style.color = '#fbbf24';
+                }
+            }
+
+            if (gemBadge) {
+                if (data.has_gemini) {
+                    gemBadge.textContent = '🟢 IA Ativa (' + (data.gemini_key_masked || 'Ativo') + ')';
+                    gemBadge.style.background = 'rgba(99, 102, 241, 0.15)';
+                    gemBadge.style.color = '#818cf8';
+                } else {
+                    gemBadge.textContent = '🟡 Chave Padrão / Inativa';
+                    gemBadge.style.background = 'rgba(245, 158, 11, 0.15)';
+                    gemBadge.style.color = '#fbbf24';
+                }
+            }
+        }
+    } catch (e) {
+        console.error('Erro ao carregar tokens:', e);
+    }
+}
+
+async function testTelegramConnection() {
+    const tgInput = document.getElementById('cfgTelegramToken');
+    const resultBox = document.getElementById('telegramTestResult');
+    const btn = document.getElementById('btnTestTelegram');
+    
+    const token = tgInput ? tgInput.value.trim() : '';
+    if (!token) {
+        alert('Por favor, insira o Token do Telegram antes de testar.');
+        return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (resultBox) {
+        resultBox.style.display = 'block';
+        resultBox.style.background = 'rgba(255,255,255,0.05)';
+        resultBox.style.color = 'var(--text-secondary)';
+        resultBox.innerHTML = '⏳ Testando conexão com a API do Telegram...';
+    }
+
+    try {
+        const res = await fetch('/api/system/test-telegram', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: token })
+        });
+        const data = await res.json();
+        
+        if (resultBox) {
+            if (data.success) {
+                resultBox.style.background = 'rgba(16, 185, 129, 0.15)';
+                resultBox.style.color = '#34d399';
+                resultBox.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+                resultBox.innerHTML = '✅ <b>Sucesso!</b> ' + (data.message || 'Bot conectado.') + (data.bot_username ? ` (@${data.bot_username})` : '');
+            } else {
+                resultBox.style.background = 'rgba(239, 68, 68, 0.15)';
+                resultBox.style.color = '#f87171';
+                resultBox.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                resultBox.innerHTML = '❌ <b>Falha:</b> ' + (data.message || 'Token inválido.');
+            }
+        }
+    } catch (e) {
+        if (resultBox) {
+            resultBox.style.background = 'rgba(239, 68, 68, 0.15)';
+            resultBox.style.color = '#f87171';
+            resultBox.innerHTML = '❌ Erro de comunicação com o servidor.';
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function testGeminiConnection() {
+    const gemInput = document.getElementById('cfgGeminiKey');
+    const resultBox = document.getElementById('geminiTestResult');
+    const btn = document.getElementById('btnTestGemini');
+    
+    const key = gemInput ? gemInput.value.trim() : '';
+    if (!key) {
+        alert('Por favor, insira a Chave do Gemini antes de testar.');
+        return;
+    }
+
+    if (btn) btn.disabled = true;
+    if (resultBox) {
+        resultBox.style.display = 'block';
+        resultBox.style.background = 'rgba(255,255,255,0.05)';
+        resultBox.style.color = 'var(--text-secondary)';
+        resultBox.innerHTML = '⏳ Testando chave com a API Google Gemini...';
+    }
+
+    try {
+        const res = await fetch('/api/system/test-gemini', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ api_key: key })
+        });
+        const data = await res.json();
+        
+        if (resultBox) {
+            if (data.success) {
+                resultBox.style.background = 'rgba(99, 102, 241, 0.15)';
+                resultBox.style.color = '#a78bfa';
+                resultBox.style.border = '1px solid rgba(99, 102, 241, 0.3)';
+                resultBox.innerHTML = '✅ <b>Sucesso!</b> ' + (data.message || 'Chave válida.') + (data.sample_models ? `<br><small style="color:var(--text-muted)">Modelos: ${data.sample_models.join(', ')}</small>` : '');
+            } else {
+                resultBox.style.background = 'rgba(239, 68, 68, 0.15)';
+                resultBox.style.color = '#f87171';
+                resultBox.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                resultBox.innerHTML = '❌ <b>Falha:</b> ' + (data.message || 'Chave inválida.');
+            }
+        }
+    } catch (e) {
+        if (resultBox) {
+            resultBox.style.background = 'rgba(239, 68, 68, 0.15)';
+            resultBox.style.color = '#f87171';
+            resultBox.innerHTML = '❌ Erro de comunicação com o servidor.';
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function saveSystemTokens(e) {
+    if (e) e.preventDefault();
+    const tgInput = document.getElementById('cfgTelegramToken');
+    const gemInput = document.getElementById('cfgGeminiKey');
+    const saveBtn = document.getElementById('btnSaveTokens');
+    const alertBox = document.getElementById('tokensSaveAlert');
+
+    const tgToken = tgInput ? tgInput.value.trim() : '';
+    const gemKey = gemInput ? gemInput.value.trim() : '';
+
+    if (saveBtn) saveBtn.disabled = true;
+    if (alertBox) {
+        alertBox.style.display = 'block';
+        alertBox.style.background = 'rgba(255,255,255,0.05)';
+        alertBox.style.color = 'var(--text-secondary)';
+        alertBox.innerHTML = '⏳ Salvando configurações e atualizando serviços...';
+    }
+
+    try {
+        const res = await fetch('/api/system/tokens', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                telegram_bot_token: tgToken,
+                gemini_api_key: gemKey
+            })
+        });
+        const data = await res.json();
+        
+        if (alertBox) {
+            if (data.success) {
+                alertBox.style.background = 'rgba(16, 185, 129, 0.15)';
+                alertBox.style.color = '#34d399';
+                alertBox.style.border = '1px solid rgba(16, 185, 129, 0.3)';
+                alertBox.innerHTML = '🎉 <b>Configurações Salvas com Sucesso!</b><br>' + (data.bot_status || 'Tokens aplicados.');
+                
+                // Recarrega status dos badges
+                loadSystemTokens();
+            } else {
+                alertBox.style.background = 'rgba(239, 68, 68, 0.15)';
+                alertBox.style.color = '#f87171';
+                alertBox.style.border = '1px solid rgba(239, 68, 68, 0.3)';
+                alertBox.innerHTML = '❌ ' + (data.message || 'Erro ao salvar configurações.');
+            }
+        }
+    } catch (err) {
+        if (alertBox) {
+            alertBox.style.background = 'rgba(239, 68, 68, 0.15)';
+            alertBox.style.color = '#f87171';
+            alertBox.innerHTML = '❌ Erro de comunicação com o servidor ao salvar.';
+        }
+    } finally {
+        if (saveBtn) saveBtn.disabled = false;
+    }
+}
+
+/* ========================================================
+   MODAL DE EXPORTAÇÃO E FILTROS DE RELATÓRIO (EXCEL / PDF)
+   ======================================================== */
+function openReportExportModal(format = 'excel') {
+    const modal = document.getElementById('reportExportModal');
+    if (!modal) return;
+
+    // Set active format radio
+    const formatRadio = document.querySelector(`input[name="repFormat"][value="${format}"]`);
+    if (formatRadio) formatRadio.checked = true;
+
+    // Default to current month preset
+    setReportPeriod('current_month');
+
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+}
+
+function closeReportExportModal() {
+    const modal = document.getElementById('reportExportModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('show');
+    }
+}
+
+function setReportPeriod(preset) {
+    const now = new Date();
+    const startInput = document.getElementById('repStartDate');
+    const endInput = document.getElementById('repEndDate');
+
+    // Update active style on preset buttons
+    document.querySelectorAll('.period-preset-btn').forEach(b => {
+        if (b.dataset.preset === preset) {
+            b.classList.add('active');
+            b.style.background = 'var(--primary)';
+            b.style.color = '#fff';
+            b.style.borderColor = 'var(--primary)';
+        } else {
+            b.classList.remove('active');
+            b.style.background = 'rgba(255, 255, 255, 0.05)';
+            b.style.color = 'var(--text-secondary)';
+            b.style.borderColor = 'var(--border-subtle)';
+        }
+    });
+
+    const formatDateStr = (d) => {
+        const year = d.getFullYear();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+
+    if (preset === 'current_month') {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        if (startInput) startInput.value = formatDateStr(start);
+        if (endInput) endInput.value = formatDateStr(end);
+    } else if (preset === 'last_month') {
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const end = new Date(now.getFullYear(), now.getMonth(), 0);
+        if (startInput) startInput.value = formatDateStr(start);
+        if (endInput) endInput.value = formatDateStr(end);
+    } else if (preset === 'last_3_months') {
+        const start = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        if (startInput) startInput.value = formatDateStr(start);
+        if (endInput) endInput.value = formatDateStr(end);
+    } else if (preset === 'current_year') {
+        const start = new Date(now.getFullYear(), 0, 1);
+        const end = new Date(now.getFullYear(), 11, 31);
+        if (startInput) startInput.value = formatDateStr(start);
+        if (endInput) endInput.value = formatDateStr(end);
+    } else if (preset === 'custom') {
+        if (startInput) startInput.focus();
+    }
+}
+
+function submitCustomReport(e) {
+    if (e) e.preventDefault();
+
+    const format = document.querySelector('input[name="repFormat"]:checked')?.value || 'excel';
+    const workspaceId = document.getElementById('repWorkspaceId')?.value || window.currentWorkspaceId || 1;
+    const startDate = document.getElementById('repStartDate')?.value;
+    const endDate = document.getElementById('repEndDate')?.value;
+    const accountId = document.getElementById('repAccountId')?.value;
+    const txType = document.getElementById('repTxType')?.value;
+    const categoryId = document.getElementById('repCategoryId')?.value;
+    const topExpensesLimit = document.getElementById('repTopExpenses')?.checked ? (document.getElementById('repTopLimit')?.value || '5') : '0';
+    const includeComparison = document.getElementById('repComparison')?.checked ?? true;
+    const includeMetrics = document.getElementById('repMetrics')?.checked ?? true;
+
+    const params = new URLSearchParams();
+    params.set('workspace_id', workspaceId);
+    if (startDate) params.set('start_date', startDate);
+    if (endDate) params.set('end_date', endDate);
+    if (accountId) params.set('account_id', accountId);
+    if (txType) params.set('tx_type', txType);
+    if (categoryId) params.set('category_id', categoryId);
+    if (topExpensesLimit && topExpensesLimit !== '0') params.set('top_expenses_limit', topExpensesLimit);
+    params.set('include_comparison', includeComparison ? 'true' : 'false');
+    params.set('include_metrics', includeMetrics ? 'true' : 'false');
+
+    const downloadUrl = `/export/${format}?${params.toString()}`;
+    
+    // Close modal and navigate/download
+    closeReportExportModal();
+    window.location.href = downloadUrl;
+}
 

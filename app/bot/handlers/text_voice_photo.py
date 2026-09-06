@@ -61,6 +61,42 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         }
 
         text_lower = text.lower()
+        if any(w in text_lower for w in ["zerar conta", "zerar contas", "zerar mes", "zerar mês", "limpar conta", "limpar mes", "limpar mês", "zerar gastos", "zerar saldo"]):
+            import re
+            from app.services.account_service import AccountService
+            from app.bot.keyboards import get_zero_selection_keyboard, get_zero_account_confirmation_keyboard
+            
+            clean_name = re.sub(r"(?:zerar\s+conta|zerar\s+contas|zerar\s+mes|zerar\s+mês|limpar\s+conta|limpar\s+mes|limpar\s+mês|zerar\s+gastos|zerar\s+saldo)\s*(?:do|da|de|no|na)?\s*", "", text, flags=re.IGNORECASE).strip()
+            
+            if clean_name:
+                acc = AccountService.find_account_by_name(db, ws.id, clean_name)
+                if acc:
+                    msg = (
+                        f"⚠️ *Confirmação de Zeramento*\n\n"
+                        f"Deseja realmente zerar todos os lançamentos da conta *{acc.icon} {acc.name}* no mês atual?\n\n"
+                        f"💰 *Saldo Atual:* {format_currency_br(acc.current_balance)}\n"
+                        f"📌 As transações desta conta no mês atual serão removidas e o saldo recalculado."
+                    )
+                    await update.message.reply_text(
+                        msg,
+                        parse_mode="Markdown",
+                        reply_markup=get_zero_account_confirmation_keyboard(acc.id)
+                    )
+                    return
+
+            accounts = AccountService.get_accounts(db, ws.id, active_only=True)
+            msg = (
+                f"🧹 *Zerar Conta / Lançamentos do Mês*\n"
+                f"📍 *Contexto:* `{ws.name}`\n\n"
+                f"Selecione abaixo qual conta você deseja zerar no mês atual ou escolha zerar todo o extrato mensal:"
+            )
+            await update.message.reply_text(
+                msg,
+                parse_mode="Markdown",
+                reply_markup=get_zero_selection_keyboard(accounts)
+            )
+            return
+
         if any(w in text_lower for w in ["criar conta", "nova conta", "cadastrar conta", "adicionar conta"]):
             import re
             from app.services.account_service import AccountService
@@ -208,7 +244,7 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         db.close()
 
 async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa fotos de comprovantes e notas fiscais"""
+    """Processa fotos de comprovantes e notas fiscais com feedback detalhado de sucesso ou falha"""
     photos = update.message.photo
     if not photos:
         return
@@ -217,6 +253,7 @@ async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     photo = photos[-1]  # Maior resolução
     file_obj = await context.bot.get_file(photo.file_id)
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "receipts"), exist_ok=True)
     file_path = os.path.join(settings.UPLOAD_DIR, "receipts", f"receipt_{photo.file_id}.jpg")
     await file_obj.download_to_drive(file_path)
 
@@ -232,12 +269,120 @@ async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         }
 
         parsed = await ai_service.parse_receipt_image(file_path, user_context)
-        response_msg, markup = await _apply_parsed_result(db, user, ws, parsed, receipt_url=file_path)
 
+        # Se identificou transações ou ações financeiras com sucesso
+        if parsed.intent in ["transaction_record", "account_transfer", "reminder_create", "shopping_action", "vehicle_action", "goal_action"]:
+            response_msg, markup = await _apply_parsed_result(db, user, ws, parsed, receipt_url=file_path)
+            await update.message.reply_text(
+                f"📸 *Comprovante Lido com Sucesso!*\n\n{response_msg}",
+                parse_mode="Markdown",
+                reply_markup=markup or get_dashboard_link_keyboard(str(user_tg.id))
+            )
+        else:
+            # Falha ou imagem não reconhecida
+            error_msg = parsed.friendly_response
+            if not error_msg or "Olá!" in error_msg or parsed.intent == "general_chat":
+                error_msg = (
+                    "❌ *Não consegui ler os dados desta imagem/comprovante.*\n\n"
+                    "A foto pode estar embaçada, cortada, com baixa iluminação ou não conter um comprovante legível.\n\n"
+                    "💡 *Dicas:*\n"
+                    "• Tire uma foto nítida e reta do cupom ou comprovante Pix\n"
+                    "• Certifique-se de que o **Valor (R$)** e o **Estabelecimento** estejam visíveis\n"
+                    "• Você também pode digitar direto: ex: `Padaria 25 no Pix` ou gravar um áudio 🎙️"
+                )
+            await update.message.reply_text(
+                error_msg,
+                parse_mode="Markdown",
+                reply_markup=get_dashboard_link_keyboard(str(user_tg.id))
+            )
+    except Exception as e:
+        logger.error(f"Erro ao processar foto: {e}", exc_info=True)
         await update.message.reply_text(
-            f"📸 *Comprovante Lido com Sucesso!*\n\n{response_msg}",
-            parse_mode="Markdown",
-            reply_markup=markup or get_dashboard_link_keyboard(str(user_tg.id))
+            "❌ *Ocorreu uma falha ao tentar ler a imagem.*\n\n"
+            "Não foi possível processar o arquivo enviado. Por favor, tente enviar novamente uma foto mais nítida ou digite o lançamento manualmente.",
+            parse_mode="Markdown"
+        )
+    finally:
+        db.close()
+
+async def document_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Processa arquivos e documentos enviados (PDFs de comprovantes, notas fiscais, imagens como arquivo)"""
+    doc = update.message.document
+    if not doc:
+        return
+
+    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_document")
+
+    mime_type = doc.mime_type or "application/octet-stream"
+    file_name = doc.file_name or f"doc_{doc.file_id}"
+    ext = os.path.splitext(file_name)[1].lower()
+
+    # Formatos aceitos para leitura
+    supported_images = [".jpg", ".jpeg", ".png", ".webp"]
+    supported_docs = [".pdf"]
+
+    if ext not in supported_images and ext not in supported_docs and not mime_type.startswith("image/") and mime_type != "application/pdf":
+        await update.message.reply_text(
+            f"❌ *Tipo de arquivo não suportado ({ext or mime_type}).*\n\n"
+            "O sistema aceita imagens (*JPG, PNG, WebP*) e documentos *PDF* de comprovantes e notas fiscais.\n\n"
+            "💡 Por favor, envie o comprovante em formato de foto ou PDF, ou digite o lançamento diretamente.",
+            parse_mode="Markdown"
+        )
+        return
+
+    os.makedirs(os.path.join(settings.UPLOAD_DIR, "documents"), exist_ok=True)
+    file_path = os.path.join(settings.UPLOAD_DIR, "documents", f"doc_{doc.file_id}{ext}")
+
+    file_obj = await context.bot.get_file(doc.file_id)
+    await file_obj.download_to_drive(file_path)
+
+    db = SessionLocal()
+    try:
+        user_tg = update.effective_user
+        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+
+        caption = update.message.caption.strip() if update.message.caption else ""
+        user_context = {
+            "user_name": user.name,
+            "workspace_name": ws.name,
+            "workspace_type": ws.type,
+            "caption": caption
+        }
+
+        if ext in supported_images or mime_type.startswith("image/"):
+            parsed = await ai_service.parse_receipt_image(file_path, user_context)
+        else:
+            parsed = await ai_service.parse_document(file_path, mime_type="application/pdf", user_context=user_context)
+
+        if parsed.intent in ["transaction_record", "account_transfer", "reminder_create", "shopping_action", "vehicle_action", "goal_action"]:
+            response_msg, markup = await _apply_parsed_result(db, user, ws, parsed, receipt_url=file_path)
+            await update.message.reply_text(
+                f"📄 *Arquivo Lido com Sucesso!*\n\n{response_msg}",
+                parse_mode="Markdown",
+                reply_markup=markup or get_dashboard_link_keyboard(str(user_tg.id))
+            )
+        else:
+            error_msg = parsed.friendly_response
+            if not error_msg or "Olá!" in error_msg or parsed.intent == "general_chat":
+                error_msg = (
+                    "❌ *Não consegui ler os dados deste arquivo/documento.*\n\n"
+                    "O documento não contém informações financeiras identificáveis ou está ilegível/protegido.\n\n"
+                    "💡 *Dicas:*\n"
+                    "• Certifique-se de que o PDF ou imagem é um comprovante ou nota fiscal válida\n"
+                    "• O arquivo não deve possuir senha de proteção\n"
+                    "• Se preferir, você pode digitar o gasto: ex: `Pix de 150 para João`"
+                )
+            await update.message.reply_text(
+                error_msg,
+                parse_mode="Markdown",
+                reply_markup=get_dashboard_link_keyboard(str(user_tg.id))
+            )
+    except Exception as e:
+        logger.error(f"Erro ao processar documento: {e}", exc_info=True)
+        await update.message.reply_text(
+            "❌ *Ocorreu uma falha ao processar o arquivo enviado.*\n\n"
+            "Não foi possível extrair as informações. Por favor, tente enviar uma foto nítida ou digite o lançamento no chat.",
+            parse_mode="Markdown"
         )
     finally:
         db.close()
@@ -251,9 +396,30 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
     # 1. Transações financeiras
     if intent == "transaction_record" and parsed.transactions:
         saved_items = []
+        duplicated_items = []
         last_tx = None
+        
         for t in parsed.transactions:
             date = datetime.datetime.utcnow() + datetime.timedelta(days=t.date_offset_days)
+            
+            # Verificação anti-duplicidade
+            existing_tx = FinanceService.find_duplicate_transaction(
+                db=db,
+                workspace_id=ws.id,
+                type=t.type,
+                amount=t.amount,
+                description=t.description,
+                transaction_date=date
+            )
+            
+            if existing_tx:
+                tipo_icon = "🟢 Entrada" if existing_tx.type == "income" else "🔴 Saída"
+                duplicated_items.append(
+                    f"{tipo_icon}: *{format_currency_br(existing_tx.amount)}* ({existing_tx.description})\n"
+                    f"📅 Data: *{existing_tx.transaction_date.strftime('%d/%m/%Y')}* • 💳 Conta: *{existing_tx.payment_method}*"
+                )
+                continue
+
             tx = FinanceService.add_transaction(
                 db=db,
                 workspace_id=ws.id,
@@ -272,16 +438,29 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
             acc_name = tx.payment_method
             saved_items.append(f"{tipo_icon}: *{format_currency_br(tx.amount)}* ({t.description})\n🏷️ Categoria: _{cat_name}_ • 💳 Conta: *{acc_name}*")
 
+        # Caso todos os itens enviados sejam duplicados
+        if not saved_items and duplicated_items:
+            dup_msg = (
+                f"⚠️ *Lançamento já Cadastrado (Duplicidade Evitada)!*\n\n"
+                f"Já identificamos o registro deste lançamento anteriormente:\n\n"
+                + "\n\n".join(duplicated_items) + "\n\n"
+                f"💡 _Para evitar repetições no seu extrato e saldo, nenhum registro duplicado foi criado._"
+            )
+            return dup_msg, None
+
         summary = FinanceService.get_monthly_summary(db, ws.id)
         saldo_emoji = "🟢" if summary["net_balance"] >= 0 else "🔴"
         
-        msg = (
-            f"✅ *Lançamento Registrado!*\n\n"
-            + "\n\n".join(saved_items) + "\n\n"
+        msg_parts = [f"✅ *Lançamento Registrado!*\n\n" + "\n\n".join(saved_items)]
+        if duplicated_items:
+            msg_parts.append(f"⚠️ *Itens já cadastrados (ignorados para não duplicar):*\n" + "\n\n".join(duplicated_items))
+            
+        msg_parts.append(
             f"📍 *Perfil:* `{ws.name}`\n"
             f"{saldo_emoji} *Novo Saldo do Mês:* {format_currency_br(summary['net_balance'])}\n\n"
             f"👇 *Selecione ou troque a conta bancária/cartão abaixo:*"
         )
+        msg = "\n\n".join(msg_parts)
         accounts = AccountService.get_accounts(db, ws.id)
         markup = get_accounts_selection_keyboard(last_tx.id, accounts, last_tx.account_id) if last_tx else None
         return msg, markup
@@ -341,6 +520,27 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
             due_dt = datetime.datetime.strptime(r.due_date, "%Y-%m-%d")
         except:
             due_dt = datetime.datetime.utcnow() + datetime.timedelta(days=5)
+
+        # Verificação anti-duplicidade para contas e boletos
+        dup_rem = ReminderService.find_duplicate_reminder(
+            db=db,
+            workspace_id=ws.id,
+            amount=r.amount,
+            due_date=due_dt,
+            title=r.title
+        )
+        if dup_rem:
+            status_str = "✅ Já Pago" if dup_rem.status == "paid" else "⏰ Pendente na Agenda"
+            tipo_str = "🔴 A Pagar" if dup_rem.type == "to_pay" else "🟢 A Receber"
+            dup_msg = (
+                f"⚠️ *Esta Conta / Boleto já está Cadastrado!*\n\n"
+                f"📝 *{dup_rem.title}*\n"
+                f"💰 Valor: *{format_currency_br(dup_rem.amount)}*\n"
+                f"📅 Vencimento: *{dup_rem.due_date.strftime('%d/%m/%Y')}* ({tipo_str})\n"
+                f"📌 Status: *{status_str}*\n\n"
+                f"💡 _Para evitar duplicidade, o boleto não foi registrado novamente na sua agenda._"
+            )
+            return dup_msg, None
 
         rem = ReminderService.create_reminder(
             db=db,

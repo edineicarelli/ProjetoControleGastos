@@ -9,6 +9,34 @@ logger = logging.getLogger(__name__)
 
 class ReminderService:
     @staticmethod
+    def find_duplicate_reminder(
+        db: Session,
+        workspace_id: int,
+        amount: float,
+        due_date: datetime.datetime,
+        title: Optional[str] = None
+    ) -> Optional[Reminder]:
+        """
+        Verifica se já existe um lembrete/conta cadastrada no mesmo workspace
+        com o mesmo valor e mesma data de vencimento (mesmo dia/mês/ano).
+        """
+        start_of_day = datetime.datetime(due_date.year, due_date.month, due_date.day, 0, 0, 0)
+        end_of_day = datetime.datetime(due_date.year, due_date.month, due_date.day, 23, 59, 59)
+        
+        reminders = db.query(Reminder).filter(
+            Reminder.workspace_id == workspace_id,
+            Reminder.status.in_(["pending", "paid"]),
+            Reminder.due_date >= start_of_day,
+            Reminder.due_date <= end_of_day
+        ).all()
+
+        for r in reminders:
+            if abs(r.amount - float(amount)) < 0.01:
+                return r
+
+        return None
+
+    @staticmethod
     def create_reminder(
         db: Session,
         workspace_id: int,
@@ -37,14 +65,17 @@ class ReminderService:
         return reminder
 
     @staticmethod
-    def get_upcoming_reminders(db: Session, workspace_id: int, days_ahead: int = 30) -> List[Reminder]:
-        now = datetime.datetime.utcnow()
-        limit_date = now + datetime.timedelta(days=days_ahead)
-        return db.query(Reminder).filter(
+    def get_upcoming_reminders(db: Session, workspace_id: int, days_ahead: Optional[int] = None) -> List[Reminder]:
+        query = db.query(Reminder).filter(
             Reminder.workspace_id == workspace_id,
-            Reminder.status == "pending",
-            Reminder.due_date <= limit_date
-        ).order_by(Reminder.due_date.asc()).all()
+            Reminder.status == "pending"
+        )
+        if days_ahead is not None:
+            now = datetime.datetime.utcnow()
+            limit_date = now + datetime.timedelta(days=days_ahead)
+            query = query.filter(Reminder.due_date <= limit_date)
+            
+        return query.order_by(Reminder.due_date.asc()).all()
 
     @staticmethod
     def mark_as_paid(db: Session, reminder_id: int) -> Optional[Reminder]:

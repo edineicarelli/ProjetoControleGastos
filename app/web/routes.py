@@ -7,11 +7,13 @@ from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, Red
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, Workspace, WorkspaceMember, Goal, Reminder, ShoppingList
+from app.models import User, Workspace, WorkspaceMember, Goal, Reminder, ShoppingList, Category
 from app.services.finance_service import FinanceService
 from app.services.reminder_service import ReminderService
 from app.services.vehicle_service import VehicleService
 from app.services.shopping_service import ShoppingService
+from app.services.account_service import AccountService
+from app.services.user_service import UserService
 from app.services.export_service import ExportService
 from app.services.event_bus import event_bus
 
@@ -71,11 +73,11 @@ async def dashboard_page(
     # Lista todos os workspaces para fácil alternância no painel
     user_workspaces = db.query(Workspace).order_by(Workspace.id.desc()).all()
 
-    # Resumos e dados mensais
-    from app.services.account_service import AccountService
-    from app.services.user_service import UserService
+    clean_year = int(year) if (year is not None and str(year).isdigit()) else None
+    clean_month = int(month) if (month is not None and str(month).isdigit()) else None
+
     accounts = AccountService.get_accounts(db, current_workspace.id)
-    summary = FinanceService.get_monthly_summary(db, current_workspace.id, year=year, month=month)
+    summary = FinanceService.get_monthly_summary(db, current_workspace.id, year=clean_year, month=clean_month)
     monthly_transactions = summary["monthly_transactions"]
     workspace_members = UserService.get_workspace_members(db, current_workspace.id)
 
@@ -88,6 +90,8 @@ async def dashboard_page(
     bot_username = "carellifinanceiro_bot"
     invite_link = f"https://t.me/{bot_username}?start=convite_{current_workspace.invite_code}"
 
+    categories = db.query(Category).filter(Category.workspace_id == current_workspace.id).order_by(Category.name.asc()).all()
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
@@ -97,6 +101,7 @@ async def dashboard_page(
             "user_workspaces": user_workspaces,
             "workspace_members": workspace_members,
             "accounts": accounts,
+            "categories": categories,
             "summary": summary,
             "all_transactions": monthly_transactions,
             "transactions": monthly_transactions,
@@ -113,13 +118,57 @@ async def dashboard_page(
     )
 
 @router.get("/export/excel")
-async def export_excel_route(workspace_id: int, db: Session = Depends(get_db)):
-    filepath = ExportService.export_to_excel(db, workspace_id)
+async def export_excel_route(
+    workspace_id: int,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    account_id: Optional[int] = Query(None),
+    tx_type: Optional[str] = Query("all"),
+    category_id: Optional[int] = Query(None),
+    top_expenses_limit: int = Query(5),
+    include_comparison: bool = Query(False),
+    include_metrics: bool = Query(True),
+    db: Session = Depends(get_db)
+):
+    filepath = ExportService.export_to_excel(
+        db=db,
+        workspace_id=workspace_id,
+        start_date=start_date,
+        end_date=end_date,
+        account_id=account_id,
+        tx_type=tx_type,
+        category_id=category_id,
+        top_expenses_limit=top_expenses_limit,
+        include_comparison=include_comparison,
+        include_metrics=include_metrics
+    )
     return FileResponse(filepath, filename=os.path.basename(filepath), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 @router.get("/export/pdf")
-async def export_pdf_route(workspace_id: int, db: Session = Depends(get_db)):
-    filepath = ExportService.export_to_pdf(db, workspace_id)
+async def export_pdf_route(
+    workspace_id: int,
+    start_date: Optional[str] = Query(None),
+    end_date: Optional[str] = Query(None),
+    account_id: Optional[int] = Query(None),
+    tx_type: Optional[str] = Query("all"),
+    category_id: Optional[int] = Query(None),
+    top_expenses_limit: int = Query(5),
+    include_comparison: bool = Query(False),
+    include_metrics: bool = Query(True),
+    db: Session = Depends(get_db)
+):
+    filepath = ExportService.export_to_pdf(
+        db=db,
+        workspace_id=workspace_id,
+        start_date=start_date,
+        end_date=end_date,
+        account_id=account_id,
+        tx_type=tx_type,
+        category_id=category_id,
+        top_expenses_limit=top_expenses_limit,
+        include_comparison=include_comparison,
+        include_metrics=include_metrics
+    )
     return FileResponse(filepath, filename=os.path.basename(filepath), media_type="application/pdf")
 
 from pydantic import BaseModel
@@ -135,7 +184,7 @@ class WorkspaceUpdateRequest(BaseModel):
     type: Optional[str] = None
 
 class AccountCreateRequest(BaseModel):
-    workspace_id: int
+    workspace_id: Optional[int] = None
     name: str
     type: str = "checking"
     initial_balance: float = 0.0
@@ -293,16 +342,25 @@ async def api_remove_workspace_member(workspace_id: int, user_id: int, db: Sessi
 @router.post("/api/accounts")
 async def api_create_account(payload: AccountCreateRequest, db: Session = Depends(get_db)):
     from app.services.account_service import AccountService
-    if not payload.name.strip():
+    if not payload.name or not payload.name.strip():
         raise HTTPException(status_code=400, detail="Nome da conta é obrigatório")
+    
+    ws_id = payload.workspace_id
+    if not ws_id:
+        ws = db.query(Workspace).order_by(Workspace.id.desc()).first()
+        if ws:
+            ws_id = ws.id
+        else:
+            raise HTTPException(status_code=400, detail="Nenhum perfil/workspace ativo encontrado.")
+            
     acc = AccountService.create_account(
         db=db,
-        workspace_id=payload.workspace_id,
-        name=payload.name,
-        type=payload.type,
-        initial_balance=payload.initial_balance,
-        icon=payload.icon,
-        color=payload.color
+        workspace_id=ws_id,
+        name=payload.name.strip(),
+        type=payload.type or "checking",
+        initial_balance=float(payload.initial_balance or 0.0),
+        icon=payload.icon or "🏦",
+        color=payload.color or "#6366f1"
     )
     return {"success": True, "account_id": acc.id, "name": acc.name}
 
@@ -338,6 +396,33 @@ async def api_delete_account(account_id: int, db: Session = Depends(get_db)):
     if not success:
         raise HTTPException(status_code=404, detail="Conta não encontrada")
     return {"success": True}
+
+@router.post("/api/accounts/{account_id}/zero")
+async def api_zero_account(
+    account_id: int,
+    workspace_id: int = Query(...),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Zera o saldo e movimentações da conta no mês especificado"""
+    from app.services.account_service import AccountService
+    res = AccountService.zero_account(db, workspace_id, account_id, year=year, month=month)
+    if not res.get("success"):
+        raise HTTPException(status_code=400, detail=res.get("message", "Erro ao zerar conta"))
+    return res
+
+@router.post("/api/workspaces/{workspace_id}/zero-month")
+async def api_zero_workspace_month(
+    workspace_id: int,
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Zera todos os lançamentos do mês especificado no workspace"""
+    from app.services.account_service import AccountService
+    res = AccountService.zero_monthly_transactions(db, workspace_id, year=year, month=month)
+    return res
 
 @router.post("/api/accounts/transfer")
 async def api_transfer_accounts(payload: AccountTransferRequest, db: Session = Depends(get_db)):
@@ -509,4 +594,43 @@ async def api_sync_version(workspace_id: int, db: Session = Depends(get_db)):
         "fingerprint": fingerprint
     }
 
+# ========================================================
+# APIS PARA CONFIGURAÇÃO DE TOKENS (TELEGRAM E IA)
+# ========================================================
+class SystemTokensUpdateRequest(BaseModel):
+    telegram_bot_token: Optional[str] = None
+    gemini_api_key: Optional[str] = None
 
+class TestTelegramRequest(BaseModel):
+    token: str
+
+class TestGeminiRequest(BaseModel):
+    api_key: str
+
+@router.get("/api/system/tokens")
+async def api_get_system_tokens():
+    """Retorna o status atual das configurações de tokens"""
+    from app.services.config_service import ConfigService
+    return ConfigService.get_settings_status()
+
+@router.post("/api/system/tokens")
+async def api_update_system_tokens(payload: SystemTokensUpdateRequest):
+    """Salva os novos tokens no .env, memória e atualiza serviços"""
+    from app.services.config_service import ConfigService
+    res = await ConfigService.save_tokens(
+        telegram_token=payload.telegram_bot_token,
+        gemini_key=payload.gemini_api_key
+    )
+    return res
+
+@router.post("/api/system/test-telegram")
+async def api_test_telegram(payload: TestTelegramRequest):
+    """Testa a validade do token do Telegram"""
+    from app.services.config_service import ConfigService
+    return await ConfigService.test_telegram_token(payload.token)
+
+@router.post("/api/system/test-gemini")
+async def api_test_gemini(payload: TestGeminiRequest):
+    """Testa a validade da API Key do Google Gemini"""
+    from app.services.config_service import ConfigService
+    return await ConfigService.test_gemini_key(payload.api_key)

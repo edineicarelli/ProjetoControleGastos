@@ -32,13 +32,17 @@ Você deve responder RIGOROSAMENTE em formato JSON com as chaves:
 
 class AIService:
     def __init__(self):
-        self.api_key = settings.GEMINI_API_KEY
         self.models = [
-            "gemini-3.1-flash-lite",
-            "gemini-3.5-flash",
-            "gemini-3.7-flash",
-            "gemini-flash-latest"
+            "gemini-3.1-flash-lite-preview",
+            "gemini-3.5-flash-lite",
+            "gemini-3.6-flash",
+            "gemini-3.8-flash",
+            "gemini-flash-lite-latest"
         ]
+
+    @property
+    def api_key(self) -> str:
+        return settings.GEMINI_API_KEY
 
     def is_gemini_active(self) -> bool:
         return bool(self.api_key and self.api_key != "SUA_GEMINI_API_KEY_AQUI")
@@ -60,7 +64,7 @@ class AIService:
             }
         }
 
-        async with httpx.AsyncClient(timeout=25.0) as client:
+        async with httpx.AsyncClient(timeout=12.0) as client:
             for model_name in self.models:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
                 try:
@@ -130,26 +134,39 @@ class AIService:
 
     async def parse_receipt_image(self, image_file_path: str, user_context: Optional[Dict[str, Any]] = None) -> AIParsedResult:
         """Analisa foto de nota fiscal / comprovante / cupom usando OCR Multimodal do Gemini"""
-        if self.is_gemini_active() and os.path.exists(image_file_path):
+        if not self.is_gemini_active():
+            return AIParsedResult(
+                intent="general_chat",
+                friendly_response=(
+                    "⚠️ *Chave de IA (Google Gemini) não configurada.*\n\n"
+                    "Para ler comprovantes e fotos automaticamente, configure sua chave no menu de configurações do painel web ou envie o gasto digitado."
+                )
+            )
+
+        if os.path.exists(image_file_path):
             try:
                 with open(image_file_path, "rb") as f:
                     img_b64 = base64.b64encode(f.read()).decode("utf-8")
 
                 mime_type = "image/jpeg"
-                if image_file_path.lower().endswith(".png"):
+                lower_path = image_file_path.lower()
+                if lower_path.endswith(".png"):
                     mime_type = "image/png"
+                elif lower_path.endswith(".webp"):
+                    mime_type = "image/webp"
 
                 context_str = f"Data atual: {datetime.now().strftime('%Y-%m-%d')}\nContexto: {json.dumps(user_context or {}, ensure_ascii=False)}"
                 prompt_ocr = (
                     f"{context_str}\n\n"
                     f"Você é um especialista em OCR e leitura inteligente de cupons fiscais brasileiros, NFC-e, SAT, DANFE, "
-                    f"recibos de maquininha (Cielo, Stone, Rede, PagSeguro) e comprovantes de PIX / transferência.\n\n"
+                    f"recibos de maquininha (Cielo, Stone, Rede, PagSeguro), comprovantes de PIX, transferências ou extratos.\n\n"
                     f"Analise a imagem com extrema atenção:\n"
-                    f"1. Identifique o Nome do Estabelecimento (ex: 'Supermercado X', 'Posto Y', 'Farmácia Z').\n"
-                    f"2. Identifique o VALOR TOTAL PAGO (procure por 'TOTAL R$', 'VALOR A PAGAR', 'VALOR TOTAL', 'VALOR LÍQUIDO', 'VALOR:', 'PAGAMENTO').\n"
-                    f"3. Identifique a forma de pagamento ou banco (ex: Pix, Cartão de Crédito, Débito, Dinheiro, Banco do Brasil, Caixa, Santander, Nubank).\n"
-                    f"4. Categorize a despesa (Alimentação, Transporte, Saúde, Moradia, etc.).\n"
-                    f"5. Retorne RIGOROSAMENTE o JSON com intent 'transaction_record' e a transação preenchida."
+                    f"1. Identifique o Nome do Estabelecimento ou Beneficiário (ex: 'Supermercado X', 'Posto Y', 'Farmácia Z', 'João Silva').\n"
+                    f"2. Identifique o VALOR TOTAL PAGO (procure por 'TOTAL R$', 'VALOR A PAGAR', 'VALOR TOTAL', 'VALOR LÍQUIDO', 'VALOR:', 'PAGAMENTO', 'R$').\n"
+                    f"3. Identifique a forma de pagamento ou banco (ex: Pix, Cartão de Crédito, Débito, Dinheiro, Banco do Brasil, Caixa, Santander, Nubank, Itaú, Bradesco, Inter).\n"
+                    f"4. Categorize a despesa (Alimentação, Transporte, Saúde, Moradia, etc.) ou se for comprovante recebido marque como 'income'.\n"
+                    f"5. Se a imagem NÃO for um comprovante financeiro ou estiver ilegível/embaçada e não for possível encontrar o valor, retorne intent 'general_chat' com friendly_response explicando de forma clara e amigável que não conseguiu ler o comprovante e orientando o usuário a enviar uma foto mais nítida.\n"
+                    f"6. Retorne RIGOROSAMENTE o JSON solicitado."
                 )
                 parts = [
                     {
@@ -171,8 +188,165 @@ class AIService:
 
         return AIParsedResult(
             intent="general_chat",
-            friendly_response="📸 *Foto recebida!* Não foi possível ler os dados do comprovante no momento."
+            friendly_response=(
+                "❌ *Não consegui ler este comprovante/foto.*\n\n"
+                "A imagem parece estar embaçada, cortada ou ilegível.\n\n"
+                "💡 *Dicas para envio:*\n"
+                "• Envie uma foto nítida e bem iluminada\n"
+                "• Enquadre o **Valor Total** e o **Nome do Estabelecimento**\n"
+                "• Se preferir, digite: `Mercado 150,00 no Cartão`"
+            )
         )
+
+    async def parse_document(self, document_file_path: str, mime_type: str = "application/pdf", user_context: Optional[Dict[str, Any]] = None) -> AIParsedResult:
+        """Analisa documentos (PDF, notas fiscais eletrônicas, recibos em arquivo) usando Gemini Multimodal e pypdf"""
+        caption = (user_context or {}).get("caption", "")
+        extracted_pdf_text = ""
+
+        if os.path.exists(document_file_path) and document_file_path.lower().endswith(".pdf"):
+            try:
+                import pypdf
+                reader = pypdf.PdfReader(document_file_path)
+                for page in reader.pages[:5]:
+                    t = page.extract_text()
+                    if t:
+                        extracted_pdf_text += "\n" + t
+            except Exception as e:
+                logger.debug(f"pypdf extraction error: {e}")
+
+        if self.is_gemini_active() and os.path.exists(document_file_path):
+            try:
+                with open(document_file_path, "rb") as f:
+                    doc_b64 = base64.b64encode(f.read()).decode("utf-8")
+
+                context_str = f"Data atual: {datetime.now().strftime('%Y-%m-%d')}\nContexto: {json.dumps(user_context or {}, ensure_ascii=False)}"
+                if caption:
+                    context_str += f"\nLegenda/Comentário enviado pelo usuário: \"{caption}\""
+
+                pdf_text_prompt = ""
+                if extracted_pdf_text:
+                    pdf_text_prompt = f"\n\nTexto extraído do documento PDF:\n\"\"\"\n{extracted_pdf_text[:3000]}\n\"\"\"\n"
+
+                prompt_doc = (
+                    f"{context_str}{pdf_text_prompt}\n\n"
+                    f"Você é um especialista em análise financeira e leitura de documentos brasileiros (PDFs de boletos bancários, contas de consumo como energia/luz/água/internet, faturas, DANFE, notas fiscais e comprovantes de transferência/Pix).\n\n"
+                    f"Analise o documento e a legenda do usuário com extrema atenção:\n"
+                    f"1. Se o documento for um BOLETO A PAGAR, CONTA DE CONSUMO (Luz/Energia/Água/Internet/Aluguel) OU se a legenda indicar que é uma conta a pagar/lembrete (ex: 'boleto a pagar de energia', 'lembrete de conta', 'pagar até dia X'):\n"
+                    f"   - Retorne intent 'reminder_create' com:\n"
+                    f"     - title: Nome da conta (ex: 'Conta de Energia', 'Boleto CPFL', 'Conta de Luz')\n"
+                    f"     - amount: Valor total a pagar\n"
+                    f"     - due_date: Data de vencimento no formato YYYY-MM-DD\n"
+                    f"     - type: 'to_pay'\n"
+                    f"     - recurrence: 'none' ou 'monthly' se for recorrente\n"
+                    f"2. Se o documento for um COMPROVANTE DE PAGAMENTO JÁ REALIZADO, PIX EFETUADO OU CUPOM FISCAL:\n"
+                    f"   - Retorne intent 'transaction_record' com o lançamento de despesa ou receita correspondente.\n"
+                    f"3. Se o documento for ilegível, protegido por senha ou sem dados financeiros, retorne intent 'general_chat' explicando o problema de forma clara.\n"
+                    f"4. Retorne RIGOROSAMENTE o JSON especificado."
+                )
+
+                parts = [
+                    {
+                        "inline_data": {
+                            "mime_type": mime_type,
+                            "data": doc_b64
+                        }
+                    },
+                    {
+                        "text": prompt_doc
+                    }
+                ]
+
+                gemini_json = await self._call_gemini(parts)
+                if gemini_json:
+                    return AIParsedResult.model_validate(gemini_json)
+            except Exception as e:
+                logger.error(f"Erro ao processar documento: {e}")
+
+        # Fallback local se o Gemini falhar mas temos texto do PDF ou legenda
+        if extracted_pdf_text or caption:
+            combined_text = f"{caption}\n{extracted_pdf_text}"
+            parsed_fallback = self._fallback_parse_document_text(combined_text)
+            if parsed_fallback:
+                return parsed_fallback
+
+        return AIParsedResult(
+            intent="general_chat",
+            friendly_response=(
+                "❌ *Não consegui ler as informações deste documento/arquivo.*\n\n"
+                "O arquivo pode estar protegido por senha, corrompido ou sem dados financeiros legíveis.\n\n"
+                "💡 *Sugestão:* Envie uma foto do comprovante ou digite os dados diretamente no chat."
+            )
+        )
+
+    def _fallback_parse_document_text(self, text: str) -> Optional[AIParsedResult]:
+        """Fallback baseado em regras para extrair boletos e faturas de texto de PDFs"""
+        text_lower = text.lower()
+        val_match = re.search(r"(?:total\s*(?:a\s*pagar)?|valor\s*(?:do\s*documento|cobrado|total|líquido)?|r\$)\s*[:.]?\s*(\d{1,3}(?:\.\d{3})*,\d{2}|\d+[.,]\d{2})", text_lower)
+        if not val_match:
+            val_match = re.search(r"(\d{1,3}(?:\.\d{3})*,\d{2})", text)
+
+        valor = 0.0
+        if val_match:
+            v_str = val_match.group(1).replace(".", "").replace(",", ".")
+            try:
+                valor = float(v_str)
+            except Exception:
+                pass
+
+        if valor <= 0:
+            return None
+
+        # Procura data de vencimento
+        due_match = re.search(r"(?:vencimento|vence\s*(?:em|dia)?|data\s*de\s*vencimento)\s*[:.]?\s*(\d{2}/\d{2}/\d{4}|\d{2}/\d{2})", text_lower)
+        now = datetime.now()
+        due_str = f"{now.year}-{now.month:02d}-{now.day:02d}"
+        if due_match:
+            d_raw = due_match.group(1)
+            parts = d_raw.split("/")
+            if len(parts) == 3:
+                due_str = f"{parts[2]}-{parts[1]}-{parts[0]}"
+            elif len(parts) == 2:
+                due_str = f"{now.year}-{parts[1]}-{parts[0]}"
+
+        # Identifica título
+        title = "Conta de Consumo"
+        if any(w in text_lower for w in ["energia", "luz", "eletricidade", "enel", "copel", "cemig", "cpfl", "energisa", "equatorial", "neoenergia"]):
+            title = "Conta de Energia"
+        elif any(w in text_lower for w in ["água", "agua", "sabesp", "copasa", "sanepar", "saneago"]):
+            title = "Conta de Água"
+        elif any(w in text_lower for w in ["internet", "claro", "vivo", "tim", "fibra", "oi"]):
+            title = "Conta de Internet"
+        elif any(w in text_lower for w in ["boleto", "fatura", "cartão"]):
+            title = "Boleto / Fatura"
+
+        is_reminder = any(w in text_lower for w in ["a pagar", "boleto", "fatura", "vencimento", "vence", "lembrete"])
+        if is_reminder:
+            return AIParsedResult(
+                intent="reminder_create",
+                reminder=ExtractedReminder(
+                    title=title,
+                    amount=valor,
+                    due_date=due_str,
+                    type="to_pay",
+                    recurrence="monthly" if any(w in text_lower for w in ["mensal", "todo mês"]) else "none"
+                ),
+                friendly_response=f"⏰ *Conta / Lembrete Cadastrado!*\n📝 *{title}*\n💰 Valor: *{format_currency_br(valor)}*\n📅 Vencimento: *{due_str}*."
+            )
+        else:
+            return AIParsedResult(
+                intent="transaction_record",
+                transactions=[
+                    ExtractedTransaction(
+                        type="expense",
+                        amount=valor,
+                        description=title,
+                        category_name="Moradia" if "Conta" in title else "Outros",
+                        payment_method="Boleto",
+                        date_offset_days=0
+                    )
+                ],
+                friendly_response=f"🔴 Saída: *{format_currency_br(valor)}* ({title}) registrada com sucesso!"
+            )
 
     def _fallback_parse_text(self, text: str) -> AIParsedResult:
         """Parser inteligente baseado em regras para contingência com suporte a todos os módulos"""

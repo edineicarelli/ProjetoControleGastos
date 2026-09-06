@@ -7,591 +7,1697 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.0">
+    <style>
+/* ==========================================================================
+   Controle Financeiro Inteligente - Clean SaaS Design System
+   ========================================================================== */
+
+:root {
+  --bg-app: #0b0f19;
+  --bg-sidebar: #0f172a;
+  --bg-topbar: rgba(15, 23, 42, 0.85);
+  --bg-card: rgba(30, 41, 59, 0.7);
+  --bg-card-solid: #1e293b;
+  --bg-card-hover: rgba(51, 65, 85, 0.8);
+  --bg-input: #0f172a;
+
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-card: rgba(255, 255, 255, 0.1);
+  --border-focus: #6366f1;
+
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+
+  --primary: #6366f1;
+  --primary-hover: #4f46e5;
+  --primary-light: #818cf8;
+  --primary-bg: rgba(99, 102, 241, 0.12);
+  --primary-glow: rgba(99, 102, 241, 0.25);
+
+  --income: #10b981;
+  --income-bg: rgba(16, 185, 129, 0.12);
+  --expense: #f43f5e;
+  --expense-bg: rgba(244, 63, 94, 0.12);
+  --warning: #f59e0b;
+  --warning-bg: rgba(245, 158, 11, 0.12);
+  --info: #06b6d4;
+  --info-bg: rgba(6, 182, 212, 0.12);
+
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  --sidebar-width: 260px;
+  --topbar-height: 64px;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  background-color: var(--bg-app);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+    radial-gradient(at 100% 100%, rgba(16, 185, 129, 0.06) 0px, transparent 50%);
+  background-attachment: fixed;
+  color: var(--text-primary);
+  min-height: 100vh;
+}
+
+.app-layout {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+
+/* Sidebar Navigation */
+.sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 150;
+  overflow-y: auto;
+  user-select: none;
+}
+
+.sidebar-header {
+  padding: 1.25rem 1.25rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  text-decoration: none;
+  color: #fff;
+}
+
+.brand-icon {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  box-shadow: 0 0 14px var(--primary-glow);
+}
+
+.brand-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.brand-subtitle {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: uppercase;
+}
+
+.sidebar-profile-box {
+  padding: 0.75rem 1rem;
+  margin: 0.75rem 0.85rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.profile-avatar {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  background: rgba(99, 102, 241, 0.18);
+  color: #818cf8;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.95rem;
+}
+
+.profile-select-native {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 0.88rem;
+  font-weight: 600;
+  outline: none;
+  cursor: pointer;
+  width: 100%;
+}
+
+.profile-select-native option {
+  background: #0f172a;
+  color: #fff;
+}
+
+.sidebar-menu {
+  flex: 1;
+  padding: 0.5rem 0.85rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+.menu-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+  padding: 0 0.65rem;
+  margin-bottom: 0.35rem;
+}
+
+.menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  list-style: none;
+}
+
+.nav-item {
+  width: 100%;
+}
+
+.nav-link, .tab-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.nav-link-content {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.nav-icon {
+  font-size: 1.1rem;
+  width: 20px;
+  text-align: center;
+}
+
+.nav-link:hover, .tab-btn:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.nav-link.active, .tab-btn.active {
+  color: #fff;
+  background: linear-gradient(135deg, rgba(99, 102, 241, 0.2), rgba(139, 92, 246, 0.15));
+  border-color: rgba(99, 102, 241, 0.35);
+  font-weight: 600;
+}
+
+.nav-badge {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-secondary);
+}
+
+.sidebar-footer {
+  padding: 0.85rem 1rem;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.user-status-widget {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--income);
+}
+
+.status-text {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+/* Main Viewport */
+.main-viewport {
+  margin-left: var(--sidebar-width);
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  height: var(--topbar-height);
+  background: var(--bg-topbar);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-subtle);
+  position: sticky;
+  top: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 1.75rem;
+}
+
+.period-picker {
+  display: flex;
+  align-items: center;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  padding: 4px 6px;
+  gap: 0.4rem;
+}
+
+.period-nav-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.period-nav-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.period-display {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: #fff;
+  padding: 0 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.period-tag-current {
+  font-size: 0.65rem;
+  font-weight: 700;
+  background: rgba(16, 185, 129, 0.18);
+  color: #34d399;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+}
+
+.period-btn-today {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary-light);
+  background: rgba(99, 102, 241, 0.12);
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  text-decoration: none;
+}
+
+.period-btn-today:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
+.topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+/* Content Area */
+.content-area {
+  padding: 1.75rem;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.glass-card {
+  background: var(--bg-card);
+  backdrop-filter: blur(12px);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+  margin-bottom: 1.5rem;
+}
+
+/* Metrics Grid */
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 1.25rem;
+  margin-bottom: 1.75rem;
+}
+
+.metric-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 1.15rem;
+  padding: 1.35rem 1.25rem;
+  border-radius: var(--radius-lg);
+  position: relative;
+  overflow: hidden;
+  margin-bottom: 0;
+}
+
+.metric-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+}
+
+.metric-card.income::before { background: var(--income); }
+.metric-card.expense::before { background: var(--expense); }
+.metric-card.balance::before { background: var(--primary); }
+.metric-card.health::before { background: var(--info); }
+
+.metric-icon-wrap {
+  width: 46px;
+  height: 46px;
+  border-radius: var(--radius-md);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.4rem;
+  flex-shrink: 0;
+}
+
+.metric-card.income .metric-icon-wrap { background: var(--income-bg); }
+.metric-card.expense .metric-icon-wrap { background: var(--expense-bg); }
+.metric-card.balance .metric-icon-wrap { background: var(--primary-bg); }
+.metric-card.health .metric-icon-wrap { background: var(--info-bg); }
+
+.metric-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.metric-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.metric-value {
+  font-size: 1.65rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.metric-footer {
+  margin-top: 0.4rem;
+}
+
+.health-bar-mini {
+  width: 100%;
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-full);
+  margin-top: 0.5rem;
+  overflow: hidden;
+}
+
+.health-bar-fill {
+  height: 100%;
+  border-radius: var(--radius-full);
+}
+
+/* Charts Section */
+.charts-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 1.5rem;
+  margin-bottom: 1.75rem;
+}
+
+.chart-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.25rem;
+}
+
+.chart-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.chart-wrapper {
+  position: relative;
+  height: 280px;
+  width: 100%;
+}
+
+/* Overview Grid */
+.overview-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.5rem;
+}
+
+.overview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.overview-title {
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.overview-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.overview-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.85rem;
+  background: rgba(255, 255, 255, 0.025);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+}
+
+/* Accounts Grid */
+.accounts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.35rem;
+}
+
+.account-card {
+  background: #1e293b;
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  padding: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+
+.account-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 4px;
+  height: 100%;
+  background: var(--account-accent, var(--primary));
+}
+
+.account-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.15rem;
+}
+
+.account-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.account-icon-pill {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: rgba(255, 255, 255, 0.06);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+}
+
+.account-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.account-type-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.account-balance-box {
+  margin-bottom: 1.25rem;
+}
+
+.account-balance-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  display: block;
+  margin-bottom: 0.2rem;
+}
+
+.account-balance-val {
+  font-size: 1.65rem;
+  font-weight: 800;
+}
+
+.account-footer-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle);
+  flex-wrap: wrap;
+}
+
+/* Tables */
+.table-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.table-container {
+  overflow-x: auto;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-subtle);
+}
+
+.custom-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.custom-table th {
+  background: #0f172a;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.custom-table td {
+  padding: 0.85rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  vertical-align: middle;
+}
+
+/* Badges & Tags */
+.category-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.status-badge.active {
+  background: var(--income-bg);
+  color: #34d399;
+}
+
+.status-badge.inactive {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+}
+
+.badge-transfer {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.55rem 1.1rem;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.btn-primary {
+  background: var(--primary);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--primary-hover);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.btn-danger {
+  background: var(--expense);
+  color: #fff;
+}
+
+.btn-sm {
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  border-radius: var(--radius-sm);
+}
+
+.btn-icon-danger {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.btn-icon-danger:hover {
+  color: var(--expense);
+}
+
+.btn-action {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-secondary);
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.btn-action:hover {
+  color: #fff;
+}
+
+.btn-action.delete:hover {
+  background: var(--expense-bg);
+  color: var(--expense);
+}
+
+.form-control {
+  width: 100%;
+  background: var(--bg-input);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-md);
+  padding: 0.65rem 0.95rem;
+  color: #fff;
+  font-size: 0.9rem;
+  outline: none;
+}
+
+.form-control:focus {
+  border-color: var(--border-focus);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+}
+
+.form-row > * {
+  flex: 1;
+}
+
+.tab-content {
+  display: none;
+}
+
+.tab-content.active {
+  display: block;
+}
+
+.goals-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 1.35rem;
+}
+
+.goal-card {
+  padding: 1.35rem;
+  margin-bottom: 0;
+}
+
+.goal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+
+.goal-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.progress-track {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-full);
+  margin-bottom: 0.75rem;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: #10b981;
+  border-radius: var(--radius-full);
+}
+
+.goal-stats {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+/* Modals */
+.modal-backdrop, .modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(8px);
+  z-index: 1000;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.modal-backdrop.show, .modal-overlay.show, .modal-backdrop.active, .modal-overlay.active {
+  display: flex !important;
+}
+
+.modal-content, .modal-card {
+  background: var(--bg-card-solid);
+  border: 1px solid var(--border-card);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 560px;
+  position: relative;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3, .modal-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.modal-close, .btn-close {
+  background: transparent;
+  border: none;
+  font-size: 1.25rem;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.modal-content form, .modal-body {
+  padding: 1.5rem;
+}
+
+.modal-footer {
+  padding: 1rem 1.5rem;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background: rgba(0, 0, 0, 0.15);
+}
+
+.text-income { color: #10b981 !important; }
+.text-expense { color: #f43f5e !important; }
+
+.batch-toolbar {
+  background: #1e1b4b;
+  border: 1px solid rgba(99, 102, 241, 0.4);
+  color: #fff;
+  padding: 0.4rem 0.85rem;
+  border-radius: var(--radius-full);
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.82rem;
+}
+
+@media (max-width: 1024px) {
+  .sidebar {
+    transform: translateX(-100%);
+    width: 260px;
+  }
+  .sidebar.open {
+    transform: translateX(0);
+  }
+  .main-viewport {
+    margin-left: 0;
+  }
+  .menu-toggle-btn {
+    display: inline-flex !important;
+  }
+}
+
+    </style>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 <body>
 
-    <!-- Top Navigation -->
-    <header class="navbar">
-        <div class="nav-container">
-            <a href="#" class="brand">
-                <div class="brand-icon">💎</div>
-                <span>Controle Financeiro IA</span>
-            </a>
+    <div class="app-layout">
 
-            <div class="nav-actions">
-                <div class="profile-badge">
-                    <span>🏢</span>
-                    <select class="profile-select" onchange="switchWorkspaceFromWeb(this)">
-                        {% for ws in user_workspaces %}
-                        <option value="{{ ws.id }}" {% if ws.id == current_workspace.id %}selected{% endif %}>
-                            {{ ws.name }}
-                        </option>
-                        {% endfor %}
-                    </select>
-                </div>
+        <!-- Mobile Sidebar Backdrop Overlay -->
+        <div class="sidebar-backdrop" id="sidebarBackdrop" onclick="toggleMobileSidebar()"></div>
 
-                <button class="btn btn-secondary" onclick="window.location.reload()" title="Atualizar Dados" style="display: inline-flex; align-items: center; gap: 0.4rem;">
-                    🔄 <span>Atualizar</span>
-                </button>
-
-                <button class="btn btn-secondary" onclick="openWorkspaceSettingsModal()" title="Gerenciar Perfis / Contas" style="display: inline-flex; align-items: center; gap: 0.4rem;">
-                    ⚙️ <span>Configuração</span>
-                </button>
-
-                <a href="/export/excel?workspace_id={{ current_workspace.id }}" class="btn btn-secondary" title="Baixar Excel">
-                    📥 Excel
-                </a>
-                <a href="/export/pdf?workspace_id={{ current_workspace.id }}" class="btn btn-secondary" title="Baixar PDF">
-                    📄 PDF
-                </a>
-            </div>
-        </div>
-    </header>
-
-    <main class="container">
-
-        <!-- Month and Year Navigation / Selector Bar (Controle Mensal) -->
-        <div class="month-navigation-bar">
-            <!-- Year Navigator < 2026 > -->
-            <div class="nav-control-group year-group">
-                <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.year_prev }}&month={{ summary.month }}" 
-                   class="nav-arrow-btn" 
-                   title="Ano Anterior ({{ summary.year_prev }})">
-                   ◀
-                </a>
-                <span class="nav-year-display" title="Ano Selecionado">{{ summary.year }}</span>
-                <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.year_next }}&month={{ summary.month }}" 
-                   class="nav-arrow-btn" 
-                   title="Próximo Ano ({{ summary.year_next }})">
-                   ▶
+        <!-- Modern Sidebar Navigation -->
+        <aside class="sidebar" id="appSidebar">
+            <!-- Sidebar Header / Brand -->
+            <div class="sidebar-header">
+                <a href="#" class="brand">
+                    <div class="brand-icon">💎</div>
+                    <div class="brand-info">
+                        <span class="brand-title">Controle IA</span>
+                        <span class="brand-subtitle">Gestão Financeira</span>
+                    </div>
                 </a>
             </div>
 
-            <!-- Current Month Badge -->
-            <div class="month-current-badge">
-                <span>📅</span>
-                <span>{{ summary.month_year_label }}</span>
-                {% if summary.is_current_month %}
-                <span class="status-badge active" style="font-size: 0.7rem; padding: 2px 6px;">Mês Atual</span>
-                {% endif %}
-            </div>
-
-            <!-- Month Navigator < [Max 3 Chips] > -->
-            <div class="nav-control-group month-group">
-                <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.prev_year }}&month={{ summary.prev_month }}" 
-                   class="nav-arrow-btn" 
-                   title="Mês Anterior ({{ summary.prev_month }}/{{ summary.prev_year }})">
-                   ◀
-                </a>
-
-                <div class="month-chips-container">
-                    {% for m in summary.months_tabs %}
-                    <a href="?workspace_id={{ current_workspace.id }}&year={{ m.year }}&month={{ m.month }}" 
-                       class="month-chip {% if m.is_selected %}active{% endif %} {% if m.is_current %}is-today-month{% endif %}"
-                       title="{{ m.full_name }} de {{ m.year }}">
-                        {{ m.short_name }}
-                    </a>
-                    {% endfor %}
-                </div>
-
-                <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.next_year }}&month={{ summary.next_month }}" 
-                   class="nav-arrow-btn" 
-                   title="Mês Seguinte ({{ summary.next_month }}/{{ summary.next_year }})">
-                   ▶
-                </a>
-            </div>
-
-            <!-- Action buttons: Mês Atual, Transferência -->
-            <div class="month-nav-actions">
-                {% if not summary.is_current_month %}
-                <a href="?workspace_id={{ current_workspace.id }}" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 0.3rem;" title="Retornar ao mês atual">
-                    📍 <span>Mês Atual</span>
-                </a>
-                {% endif %}
-                <button class="btn btn-primary btn-sm" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.35rem; background: linear-gradient(135deg, #8b5cf6, #6366f1);">
-                    🔄 <span>Transferência</span>
-                </button>
-            </div>
-        </div>
-
-        <!-- Navigation Tabs Bar -->
-        <nav class="tabs-nav">
-            <button class="tab-btn active" data-tab="tab-dashboard">📊 Dashboard / Visão Geral</button>
-            <button class="tab-btn" data-tab="tab-accounts">💳 Contas & Bancos</button>
-            <button class="tab-btn" data-tab="tab-transactions">📑 Lançamentos & Extrato</button>
-            <button class="tab-btn" data-tab="tab-goals">🎯 Metas & Caixinhas</button>
-            <button class="tab-btn" data-tab="tab-reminders">⏰ Contas & Vencimentos</button>
-            <button class="tab-btn" data-tab="tab-vehicles">🚗 Módulo Veicular</button>
-            <button class="tab-btn" data-tab="tab-shopping">🛒 Lista de Mercado</button>
-        </nav>
-
-        <!-- Tab: Dashboard / Overview -->
-        <section id="tab-dashboard" class="tab-content active">
-            <!-- Metrics Grid -->
-            <div class="metrics-grid">
-                <div class="glass-card metric-card income">
-                    <div class="metric-icon">💰</div>
-                    <div class="metric-info">
-                        <span class="metric-label">Receitas do Mês</span>
-                        <span class="metric-value text-income">{{ summary.total_income | currency_br }}</span>
-                        <span class="metric-tag text-income">🟢 Entradas registradas</span>
+            <!-- Profile Selector Widget in Sidebar -->
+            <div class="sidebar-profile-box">
+                <div class="sidebar-profile-info">
+                    <div class="profile-avatar">
+                        {% if current_workspace.type == 'business' %}🏢{% elif current_workspace.type == 'family' %}👨‍👩‍👧‍👦{% else %}👤{% endif %}
                     </div>
-                </div>
-
-                <div class="glass-card metric-card expense">
-                    <div class="metric-icon">💸</div>
-                    <div class="metric-info">
-                        <span class="metric-label">Despesas do Mês</span>
-                        <span class="metric-value text-expense">{{ summary.total_expense | currency_br }}</span>
-                        <span class="metric-tag text-expense">🔴 Total de saídas</span>
-                    </div>
-                </div>
-
-                <div class="glass-card metric-card balance">
-                    <div class="metric-icon">⚖️</div>
-                    <div class="metric-info">
-                        <span class="metric-label">Saldo Líquido</span>
-                        <span class="metric-value {% if summary.net_balance >= 0 %}text-income{% else %}text-expense{% endif %}">
-                            {{ summary.net_balance | currency_br }}
-                        </span>
-                        <span class="metric-tag text-primary">💼 Balanço atual</span>
-                    </div>
-                </div>
-
-                <div class="glass-card metric-card health">
-                    <div class="metric-icon">🩺</div>
-                    <div class="metric-info">
-                        <span class="metric-label">Saúde Financeira</span>
-                        <span class="metric-value">{{ summary.health_score }}<small style="font-size: 1rem; color: var(--text-muted)">/100</small></span>
-                        <span class="metric-tag" style="color: var(--info)">{{ summary.health_status }}</span>
+                    <div style="flex: 1; min-width: 0;">
+                        <select class="profile-select-native" onchange="switchWorkspaceFromWeb(this)" title="Trocar Perfil / Workspace">
+                            {% for ws in user_workspaces %}
+                            <option value="{{ ws.id }}" {% if ws.id == current_workspace.id %}selected{% endif %}>
+                                {{ ws.name }}
+                            </option>
+                            {% endfor %}
+                        </select>
                     </div>
                 </div>
             </div>
 
-            <!-- Charts Section -->
-            <div class="charts-grid" style="margin-top: 1.5rem;">
-                <div class="glass-card">
-                    <div class="chart-header">
-                        <h2 class="chart-title">📊 Fluxo de Caixa Mensal</h2>
-                    </div>
-                    <div class="chart-wrapper">
-                        <canvas id="cashflowChart"></canvas>
-                    </div>
-                </div>
-
-                <div class="glass-card">
-                    <div class="chart-header">
-                        <h2 class="chart-title">🍕 Gastos por Categoria</h2>
-                    </div>
-                    <div class="chart-wrapper">
-                        <canvas id="categoryChart"></canvas>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Quick Overview Cards -->
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.5rem; margin-top: 1.5rem;">
-                <!-- Card: Contas Rápidas -->
-                <div class="glass-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                        <h3 style="font-size: 1.05rem; font-weight: 700;">💳 Minhas Contas</h3>
-                        <button class="btn btn-secondary btn-sm" onclick="switchTab('tab-accounts')">Gerenciar Contas &rarr;</button>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-                        {% for acc in accounts[:4] %}
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.03); border-radius: var(--radius-sm);">
-                            <span style="display: flex; align-items: center; gap: 0.5rem;">
-                                <span>{{ acc.icon }}</span> <b>{{ acc.name }}</b>
-                            </span>
-                            <span style="font-weight: 700; color: {% if acc.current_balance >= 0 %}var(--income){% else %}var(--expense){% endif %};">
-                                {{ acc.current_balance | currency_br }}
-                            </span>
-                        </div>
-                        {% else %}
-                        <p style="color: var(--text-muted); font-size: 0.85rem;">Nenhuma conta configurada.</p>
-                        {% endfor %}
-                    </div>
-                </div>
-
-                <!-- Card: Contas a Vencer -->
-                <div class="glass-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                        <h3 style="font-size: 1.05rem; font-weight: 700;">⏰ Próximos Vencimentos</h3>
-                        <button class="btn btn-secondary btn-sm" onclick="switchTab('tab-reminders')">Ver Todas &rarr;</button>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-                        {% for r in reminders[:3] %}
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.03); border-radius: var(--radius-sm);">
-                            <div>
-                                <b style="display: block; font-size: 0.9rem;">{{ r.title }}</b>
-                                <small style="color: var(--text-secondary);">Vence: {{ r.due_date.strftime('%d/%m/%Y') }}</small>
-                            </div>
-                            <span style="font-weight: 700; color: var(--expense);">
-                                {{ r.amount | currency_br }}
-                            </span>
-                        </div>
-                        {% else %}
-                        <p style="color: var(--text-muted); font-size: 0.85rem;">Nenhuma conta a vencer nos próximos dias! 🎉</p>
-                        {% endfor %}
-                    </div>
-                </div>
-
-                <!-- Card: Últimos Lançamentos -->
-                <div class="glass-card">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                        <h3 style="font-size: 1.05rem; font-weight: 700;">📑 Últimos Lançamentos</h3>
-                        <button class="btn btn-secondary btn-sm" onclick="switchTab('tab-transactions')">Ver Extrato &rarr;</button>
-                    </div>
-                    <div style="display: flex; flex-direction: column; gap: 0.6rem;">
-                        {% for tx in all_transactions[:4] %}
-                        <div style="display: flex; justify-content: space-between; align-items: center; padding: 0.5rem 0.75rem; background: rgba(255,255,255,0.03); border-radius: var(--radius-sm);">
-                            <div>
-                                <b style="display: block; font-size: 0.9rem;">{{ tx.description }}</b>
-                                <small style="color: var(--text-secondary);">{{ tx.transaction_date.strftime('%d/%m/%Y') }} • {{ tx.category.name if tx.category else 'Outros' }}</small>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                <span style="font-weight: 700;" class="{% if tx.type == 'income' %}text-income{% else %}text-expense{% endif %}">
-                                    {% if tx.type == 'income' %}+{% else %}-{% endif %}{{ tx.amount | currency_br }}
-                                </span>
-                                <button class="btn-icon-danger" style="padding: 2px 6px; font-size: 0.75rem;" title="Excluir lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
-                                    🗑️
-                                </button>
-                            </div>
-                        </div>
-                        {% else %}
-                        <p style="color: var(--text-muted); font-size: 0.85rem;">Nenhum lançamento registrado.</p>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </section>
-
-        <!-- Tab: Accounts / Banks -->
-        <section id="tab-accounts" class="tab-content">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+            <!-- Sidebar Navigation Menu -->
+            <div class="sidebar-menu">
+                <!-- Group: Principal -->
                 <div>
-                    <h2 style="font-size: 1.25rem; font-weight: 700;">💳 Contas Bancárias & Carteiras</h2>
-                    <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.2rem;">Cadastre bancos, carteiras físicas e contas. Saldos são preservados e carregados continuamente entre os meses.</p>
-                </div>
-                <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
-                    <button class="btn btn-secondary" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.4rem;">
-                        🔄 <span>Transferência Entre Contas</span>
-                    </button>
-                    <button class="btn btn-primary" onclick="openCreateAccountModal()">
-                        ➕ Nova Conta
-                    </button>
-                </div>
-            </div>
-
-            <div class="goals-grid">
-                {% if accounts %}
-                    {% for acc in accounts %}
-                    <div class="glass-card goal-card account-card {% if acc.is_active == False %}inactive-account{% endif %}" id="account-card-{{ acc.id }}">
-                        <div class="goal-header">
-                            <span class="goal-title" style="font-size: 1.1rem; display: flex; align-items: center; gap: 0.5rem;">
-                                <span>{{ acc.icon }}</span> {{ acc.name }}
-                            </span>
-                            <div style="display: flex; gap: 0.4rem; align-items: center;">
-                                <span class="category-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
-                                    {{ acc.type|upper }}
+                    <div class="menu-group-label">Principal</div>
+                    <ul class="menu-items">
+                        <li class="nav-item">
+                            <button class="tab-btn active" data-tab="tab-dashboard">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">📊</span>
+                                    <span>Visão Geral</span>
                                 </span>
-                                {% if acc.is_active != False %}
-                                    <span class="badge-status active">Ativa</span>
-                                {% else %}
-                                    <span class="badge-status inactive">Inativa</span>
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="tab-btn" data-tab="tab-transactions">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">📑</span>
+                                    <span>Lançamentos</span>
+                                </span>
+                                <span class="nav-badge">{{ all_transactions|length }}</span>
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="tab-btn" data-tab="tab-accounts">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">💳</span>
+                                    <span>Contas & Bancos</span>
+                                </span>
+                                <span class="nav-badge">{{ accounts|length }}</span>
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="tab-btn" data-tab="tab-reminders">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">⏰</span>
+                                    <span>Vencimentos</span>
+                                </span>
+                                {% if reminders %}
+                                <span class="nav-badge" style="background: var(--expense); color: #fff;">{{ reminders|length }}</span>
                                 {% endif %}
-                            </div>
-                        </div>
-                        <div style="margin: 0.5rem 0;">
-                            <span style="font-size: 0.85rem; color: var(--text-secondary); display: block;">Saldo Atual Acumulado:</span>
-                            <span style="font-size: 1.5rem; font-weight: 700; color: {% if acc.current_balance >= 0 %}var(--income){% else %}var(--expense){% endif %};">
-                                {{ acc.current_balance | currency_br }}
-                            </span>
-                        </div>
-                        <div class="goal-stats">
-                            <span>{{ acc.transactions|length }} lançamentos</span>
-                            <span style="color: var(--text-muted);">Inicial: {{ acc.initial_balance | currency_br }}</span>
-                        </div>
-                        <div class="account-actions">
-                            <button class="btn-sm btn-secondary" onclick='openEditAccountModal({{ acc.id }}, "{{ acc.name|escape }}", "{{ acc.type }}", {{ acc.initial_balance or 0.0 }}, "{{ acc.icon }}", "{{ acc.color }}", {{ "true" if (acc.is_active != False) else "false" }})' title="Editar Conta">
-                                ✏️ Editar
                             </button>
-                            <button class="btn-sm btn-secondary" onclick="toggleAccountActive({{ acc.id }})" title="Ativar ou Inativar Conta">
-                                {% if acc.is_active != False %}⏸️ Inativar{% else %}▶️ Reativar{% endif %}
-                            </button>
-                            <button class="btn-sm btn-danger-soft" onclick="deleteAccount({{ acc.id }}, '{{ acc.name|escape }}')" title="Excluir Conta">
-                                🗑️ Excluir
-                            </button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="glass-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 2rem;">
-                        Nenhuma conta configurada. Clique em "➕ Nova Conta" para adicionar!
-                    </div>
-                {% endif %}
-            </div>
-        </section>
-
-        <!-- Tab: Transactions / Extrato -->
-        <section id="tab-transactions" class="tab-content">
-            <div class="glass-card">
-                <div class="table-toolbar" style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1.25rem;">
-                    <div>
-                        <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin: 0;">📑 Extrato de Lançamentos: {{ summary.month_year_label }}</h2>
-                        <small style="color: var(--text-muted);">{{ all_transactions|length }} lançamentos registrados neste mês</small>
-                    </div>
-
-                    <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                        <button class="btn btn-primary btn-sm" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.35rem; background: linear-gradient(135deg, #8b5cf6, #6366f1);">
-                            🔄 <span>Nova Transferência</span>
-                        </button>
-
-                        <input type="text" id="txFilterInput" onkeyup="filterTransactionsTable(this.value)" placeholder="🔍 Buscar lançamento..." class="form-control" style="max-width: 220px; padding: 0.4rem 0.8rem; font-size: 0.85rem;">
-                        
-                        <div id="batchActionToolbar" class="batch-toolbar" style="display: none;">
-                            <span><b id="selectedCount">0</b> selecionados</span>
-                            <button class="btn btn-danger btn-sm" onclick="deleteSelectedTransactions()">
-                                🗑️ Excluir Selecionados
-                            </button>
-                        </div>
-                    </div>
+                        </li>
+                    </ul>
                 </div>
-                <div class="table-container">
-                    <table class="custom-table" id="transactionsTable">
-                        <thead>
-                            <tr>
-                                <th style="width: 40px; text-align: center;">
-                                    <input type="checkbox" id="selectAllTx" onchange="toggleSelectAllTx(this)" style="cursor: pointer; width: 16px; height: 16px;">
-                                </th>
-                                <th>Data</th>
-                                <th>Tipo</th>
-                                <th>Descrição</th>
-                                <th>Categoria</th>
-                                <th>Conta / Pagamento</th>
-                                <th style="text-align: right;">Valor</th>
-                                <th style="width: 60px; text-align: center;">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% if all_transactions %}
-                                {% for tx in all_transactions %}
-                                <tr id="tx-row-{{ tx.id }}" class="tx-row-item">
-                                    <td style="text-align: center;">
-                                        <input type="checkbox" class="tx-checkbox" value="{{ tx.id }}" onchange="updateSelectedTxCount()" style="cursor: pointer; width: 16px; height: 16px;">
-                                    </td>
-                                    <td>{{ tx.transaction_date.strftime('%d/%m/%Y') }}</td>
-                                    <td>
-                                        {% if tx.notes and 'transfer' in tx.notes %}
-                                            <span class="badge-transfer" style="padding: 2px 6px; border-radius: 4px; font-weight: 600; font-size: 0.8rem;">
-                                                🔄 {% if tx.type == 'income' %}Entrada Transf.{% else %}Saída Transf.{% endif %}
-                                            </span>
-                                        {% elif tx.type == 'income' %}
-                                            <span style="color: var(--income); font-weight: 600;">+ Entrada</span>
-                                        {% else %}
-                                            <span style="color: var(--expense); font-weight: 600;">- Saída</span>
-                                        {% endif %}
-                                    </td>
-                                    <td style="font-weight: 500;" class="tx-desc">{{ tx.description }}</td>
-                                    <td>
-                                        <span class="category-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8;">
-                                            {{ tx.category.icon if tx.category else '🏷️' }} {{ tx.category.name if tx.category else 'Outros' }}
-                                        </span>
-                                    </td>
-                                    <td>
-                                        {% if tx.account %}
-                                            {{ tx.account.icon }} {{ tx.account.name }}
-                                        {% else %}
-                                            {{ tx.payment_method }}
-                                        {% endif %}
-                                    </td>
-                                    <td style="text-align: right; font-weight: 700;" class="{% if tx.type == 'income' %}text-income{% else %}text-expense{% endif %}">
-                                        {{ tx.amount | currency_br }}
-                                    </td>
-                                    <td style="text-align: center;">
-                                        <button class="btn-icon-danger" title="Excluir este lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
-                                            🗑️
-                                        </button>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            {% else %}
-                                <tr>
-                                    <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 2.5rem 1rem;">
-                                        <div style="font-size: 1.5rem; margin-bottom: 0.5rem;">🍃</div>
-                                        <div style="font-weight: 600; color: #fff; margin-bottom: 0.25rem;">Nenhum lançamento registrado em {{ summary.month_year_label }}</div>
-                                        <div style="font-size: 0.85rem;">Os lançamentos deste mês estão limpos. Adicione novos lançamentos ou navegue pelos meses anteriores acima.</div>
-                                    </td>
-                                </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </section>
 
-        <!-- Tab: Goals -->
-        <section id="tab-goals" class="tab-content">
-            <div class="goals-grid">
-                {% if goals %}
-                    {% for g in goals %}
-                    <div class="glass-card goal-card">
-                        <div class="goal-header" style="display: flex; justify-content: space-between; align-items: center;">
-                            <span class="goal-title">{{ g.icon }} {{ g.title }}</span>
-                            <div style="display: flex; align-items: center; gap: 0.5rem;">
-                                <span class="category-tag" style="background: var(--income-bg); color: var(--income);">
-                                    {{ g.progress_percentage }}%
+                <!-- Group: Planejamento & Módulos -->
+                <div>
+                    <div class="menu-group-label">Planejamento & Gestão</div>
+                    <ul class="menu-items">
+                        <li class="nav-item">
+                            <button class="tab-btn" data-tab="tab-goals">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">🎯</span>
+                                    <span>Metas & Caixinhas</span>
                                 </span>
-                                <button class="btn-icon-danger" title="Excluir esta meta" onclick="deleteGoal({{ g.id }}, '{{ g.title|replace("'", "\\'") }}')">
-                                    🗑️
-                                </button>
-                            </div>
-                        </div>
-                        <div class="progress-track">
-                            <div class="progress-fill" style="width: {{ g.progress_percentage }}%;"></div>
-                        </div>
-                        <div class="goal-stats">
-                            <span>Atual: <b>{{ g.current_amount | currency_br }}</b></span>
-                            <span>Alvo: <b>{{ g.target_amount | currency_br }}</b></span>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div class="glass-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 2rem;">
-                        Nenhuma meta cadastrada. Envie <i>"Guardei 200 pra viagem"</i> no Telegram!
-                    </div>
-                {% endif %}
-            </div>
-        </section>
-
-        <!-- Tab: Reminders -->
-        <section id="tab-reminders" class="tab-content">
-            <div class="glass-card">
-                <div style="margin-bottom: 1rem;">
-                    <h2 style="font-size: 1.15rem; font-weight: 700; color: var(--text-primary); margin: 0;">⏰ Contas e Vencimentos Pendentes</h2>
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="tab-btn" data-tab="tab-vehicles">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">🚗</span>
+                                    <span>Módulo Veicular</span>
+                                </span>
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="tab-btn" data-tab="tab-shopping">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">🛒</span>
+                                    <span>Lista de Mercado</span>
+                                </span>
+                            </button>
+                        </li>
+                    </ul>
                 </div>
-                {% if reminders %}
-                    {% for r in reminders %}
-                    <div class="list-item" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-bottom: 1px solid rgba(255,255,255,0.05);">
-                        <div>
-                            <strong style="display: block; font-size: 1rem;">{{ r.title }}</strong>
-                            <small style="color: var(--text-secondary);">Vencimento: {{ r.due_date.strftime('%d/%m/%Y') }} • {{ '🔴 A Pagar' if r.type == 'to_pay' else '🟢 A Receber' }}</small>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 0.75rem;">
-                            <span style="font-weight: 700; font-size: 1.1rem;">{{ r.amount | currency_br }}</span>
-                            <button class="btn btn-primary" onclick="markReminderPaid({{ r.id }})" style="padding: 0.4rem 0.8rem; font-size: 0.8rem;">
-                                ✅ Pagar
-                            </button>
-                            <button class="btn-icon-danger" title="Excluir este lembrete" onclick="deleteReminder({{ r.id }}, '{{ r.title|replace("'", "\\'") }}')">
-                                🗑️
-                            </button>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                    <div style="text-align: center; color: var(--text-muted); padding: 2rem;">
-                        Nenhuma conta pendente para os próximos dias!
-                    </div>
-                {% endif %}
-            </div>
-        </section>
 
-        <!-- Tab: Vehicles -->
-        <section id="tab-vehicles" class="tab-content">
-            <div class="glass-card">
-                {% if vehicle %}
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
-                    <div>
-                        <h2>🚘 {{ vehicle.name }} <small style="color: var(--text-secondary); font-size: 0.9rem;">({{ vehicle.plate }})</small></h2>
-                        <p style="color: var(--text-secondary); margin-top: 0.25rem;">Odômetro Atual: <b>{{ vehicle.current_km | number_br }} km</b></p>
+                <!-- Group: Sistema & Relatórios -->
+                <div>
+                    <div class="menu-group-label">Sistema & Relatórios</div>
+                    <ul class="menu-items">
+                        <li class="nav-item">
+                            <button type="button" class="nav-link" onclick="openWorkspaceSettingsModal()">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">⚙️</span>
+                                    <span>Configurações</span>
+                                </span>
+                            </button>
+                        </li>
+                        <li class="nav-item">
+                            <button type="button" class="nav-link" onclick="openReportExportModal()" title="Central de Relatórios e Exportação">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">📊</span>
+                                    <span>Relatórios</span>
+                                </span>
+                            </button>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Sidebar Footer -->
+            <div class="sidebar-footer">
+                <div class="user-status-widget">
+                    <span class="status-dot"></span>
+                    <span class="status-text">Sincronizado IA</span>
+                </div>
+                <button class="btn-action" onclick="window.location.reload()" title="Atualizar Painel">
+                    🔄
+                </button>
+            </div>
+        </aside>
+
+        <!-- Main Viewport -->
+        <div class="main-viewport">
+            
+            <!-- Topbar Header -->
+            <header class="topbar">
+                <div class="topbar-left">
+                    <button class="menu-toggle-btn" onclick="toggleMobileSidebar()" title="Abrir Menu">
+                        ☰
+                    </button>
+                </div>
+
+                <!-- Unified Period Picker (Center) -->
+                <div class="period-picker">
+                    <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.prev_year }}&month={{ summary.prev_month }}" 
+                       class="period-nav-btn" 
+                       title="Mês Anterior ({{ summary.prev_month }}/{{ summary.prev_year }})">
+                        ◀
+                    </a>
+
+                    <div class="period-display">
+                        <span>📅 {{ summary.month_year_label }}</span>
+                        {% if summary.is_current_month %}
+                        <span class="period-tag-current">Mês Atual</span>
+                        {% else %}
+                        <a href="?workspace_id={{ current_workspace.id }}" class="period-btn-today" title="Retornar ao mês atual">Hoje</a>
+                        {% endif %}
                     </div>
-                    {% if vehicle_summary.oil_alert %}
-                    <div class="category-tag" style="background: var(--expense-bg); color: var(--expense); font-size: 0.9rem; padding: 0.6rem 1rem;">
-                        {{ vehicle_summary.oil_alert }}
+
+                    <a href="?workspace_id={{ current_workspace.id }}&year={{ summary.next_year }}&month={{ summary.next_month }}" 
+                       class="period-nav-btn" 
+                       title="Próximo Mês ({{ summary.next_month }}/{{ summary.next_year }})">
+                        ▶
+                    </a>
+                </div>
+
+                <!-- Topbar Actions (Right) -->
+                <div class="topbar-right">
+                    <button class="btn btn-primary btn-sm" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                        🔄 <span>Transferência</span>
+                    </button>
+                </div>
+            </header>
+
+            <!-- Main Content Area -->
+            <main class="content-area">
+
+                <!-- TAB 1: DASHBOARD / VISÃO GERAL -->
+                <section id="tab-dashboard" class="tab-content active">
+                    {% if not summary.is_current_month %}
+                    <div class="glass-card" style="padding: 0.75rem 1.25rem; margin-bottom: 1.25rem; background: rgba(99, 102, 241, 0.12); border: 1px solid rgba(99, 102, 241, 0.35); display: flex; justify-content: space-between; align-items: center; border-radius: var(--radius-md); flex-wrap: wrap; gap: 0.75rem;">
+                        <span style="font-size: 0.88rem; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                            📅 <span>Você está visualizando o histórico de <b>{{ summary.month_year_label }}</b>.</span>
+                        </span>
+                        <a href="?workspace_id={{ current_workspace.id }}" class="btn btn-primary btn-sm" style="font-size: 0.8rem; padding: 0.35rem 0.85rem;">
+                            Ir para o Mês Atual (Hoje) &rarr;
+                        </a>
                     </div>
                     {% endif %}
-                </div>
 
-                <h3 style="margin-bottom: 1rem; font-size: 1rem; color: var(--text-secondary);">Histórico de Manutenções & Abastecimentos</h3>
-                <div class="table-container">
-                    <table class="custom-table">
-                        <thead>
-                            <tr>
-                                <th>Data</th>
-                                <th>Tipo</th>
-                                <th>Descrição</th>
-                                <th>KM</th>
-                                <th style="text-align: right;">Valor</th>
-                                <th style="width: 50px; text-align: center;">Ações</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for m in vehicle_summary.history %}
-                            <tr>
-                                <td>{{ m.date.strftime('%d/%m/%Y') }}</td>
-                                <td><span class="category-tag" style="background: rgba(255, 255, 255, 0.05);">{{ m.type }}</span></td>
-                                <td>{{ m.description }}</td>
-                                <td>{{ m.km | number_br }} km</td>
-                                <td style="text-align: right; font-weight: 600;">{{ m.amount | currency_br }}</td>
-                                <td style="text-align: center;">
-                                    <button class="btn-icon-danger" title="Excluir este registro" onclick="deleteVehicleMaintenance({{ m.id }}, '{{ m.description|replace("'", "\\'") }}')">
-                                        🗑️
-                                    </button>
-                                </td>
-                            </tr>
-                            {% else %}
-                            <tr>
-                                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
-                                    Nenhum registro veicular adicionado.
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-                {% endif %}
-            </div>
-        </section>
-
-        <!-- Tab: Shopping List -->
-        <section id="tab-shopping" class="tab-content">
-            <div class="glass-card">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
-                    <h2>🛒 {{ shopping_list.title }}</h2>
-                    <span style="color: var(--text-secondary);">Total Estimado: <b>{{ shopping_list.total_estimated | currency_br }}</b></span>
-                </div>
-
-                {% if shopping_list.items %}
-                    {% for item in shopping_list.items %}
-                    <div class="list-item {% if item.is_checked %}checked{% endif %}" style="display: flex; justify-content: space-between; align-items: center;">
-                        <div style="display: flex; align-items: center; gap: 0.75rem;">
-                            <input type="checkbox" {% if item.is_checked %}checked{% endif %} onchange="toggleItemFromWeb({{ item.id }})" style="cursor: pointer; width: 18px; height: 18px;">
-                            <span>{{ item.name }} ({{ item.quantity|int }} {{ item.unit }})</span>
+                    <!-- Key KPI Metrics Grid -->
+                    <div class="metrics-grid">
+                        <!-- Card: Receitas -->
+                        <div class="glass-card metric-card income">
+                            <div class="metric-icon-wrap">💰</div>
+                            <div class="metric-content">
+                                <span class="metric-label">Receitas do Mês</span>
+                                <span class="metric-value text-income">{{ summary.total_income | currency_br }}</span>
+                                <div class="metric-footer">
+                                    <span class="status-badge active">🟢 Entradas registradas</span>
+                                </div>
+                            </div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 0.75rem;">
-                            <span style="color: var(--text-secondary);">
-                                {% if item.estimated_price > 0 %}{{ item.estimated_price | currency_br }}{% endif %}
-                            </span>
-                            <button class="btn-icon-danger" title="Excluir este item" onclick="deleteShoppingItem({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')">
-                                🗑️
+
+                        <!-- Card: Despesas -->
+                        <div class="glass-card metric-card expense">
+                            <div class="metric-icon-wrap">💸</div>
+                            <div class="metric-content">
+                                <span class="metric-label">Despesas do Mês</span>
+                                <span class="metric-value text-expense">{{ summary.total_expense | currency_br }}</span>
+                                <div class="metric-footer">
+                                    <span class="status-badge" style="background: var(--expense-bg); color: #fb7185;">🔴 Total de saídas</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card: Saldo Líquido -->
+                        <div class="glass-card metric-card balance">
+                            <div class="metric-icon-wrap">⚖️</div>
+                            <div class="metric-content">
+                                <span class="metric-label">Saldo Líquido</span>
+                                <span class="metric-value {% if summary.net_balance >= 0 %}text-income{% else %}text-expense{% endif %}">
+                                    {{ summary.net_balance | currency_br }}
+                                </span>
+                                <div class="metric-footer">
+                                    <span class="status-badge" style="background: var(--primary-bg); color: var(--primary-light);">💼 Balanço atual</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Card: Saúde Financeira -->
+                        <div class="glass-card metric-card health">
+                            <div class="metric-icon-wrap">🩺</div>
+                            <div class="metric-content">
+                                <span class="metric-label">Saúde Financeira</span>
+                                <span class="metric-value">{{ summary.health_score }}<small style="font-size: 1rem; color: var(--text-muted)">/100</small></span>
+                                <div class="metric-footer">
+                                    <span class="status-badge" style="background: var(--info-bg); color: #38bdf8;">{{ summary.health_status }}</span>
+                                </div>
+                                <div class="health-bar-mini">
+                                    <div class="health-bar-fill" style="width: {{ summary.health_score }}%; background: {% if summary.health_score >= 80 %}#10b981{% elif summary.health_score >= 50 %}#6366f1{% elif summary.health_score >= 30 %}#f59e0b{% else %}#f43f5e{% endif %};"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Charts Grid -->
+                    <div class="charts-grid">
+                        <div class="glass-card">
+                            <div class="chart-header">
+                                <h2 class="chart-title">📊 Fluxo de Caixa Mensal</h2>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="cashflowChart"></canvas>
+                            </div>
+                        </div>
+
+                        <div class="glass-card">
+                            <div class="chart-header">
+                                <h2 class="chart-title">🍕 Gastos por Categoria</h2>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="categoryChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 3-Column Overview Section -->
+                    <div class="overview-grid">
+                        <!-- Mini Card: Minhas Contas -->
+                        <div class="glass-card">
+                            <div class="overview-header">
+                                <h3 class="overview-title">💳 Minhas Contas</h3>
+                                <button class="btn btn-secondary btn-sm" onclick="switchTab('tab-accounts')">Ver Todas &rarr;</button>
+                            </div>
+                            <div class="overview-list">
+                                {% for acc in accounts[:4] %}
+                                <div class="overview-item">
+                                    <span style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span>{{ acc.icon }}</span> <b>{{ acc.name }}</b>
+                                    </span>
+                                    <span style="font-weight: 700; color: {% if acc.current_balance >= 0 %}var(--income){% else %}var(--expense){% endif %};">
+                                        {{ acc.current_balance | currency_br }}
+                                    </span>
+                                </div>
+                                {% else %}
+                                <p style="color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0;">Nenhuma conta configurada.</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <!-- Mini Card: Contas a Vencer -->
+                        <div class="glass-card">
+                            <div class="overview-header">
+                                <h3 class="overview-title">⏰ Próximos Vencimentos</h3>
+                                <button class="btn btn-secondary btn-sm" onclick="switchTab('tab-reminders')">Ver Todas &rarr;</button>
+                            </div>
+                            <div class="overview-list">
+                                {% for r in reminders[:3] %}
+                                <div class="overview-item">
+                                    <div>
+                                        <b style="display: block; font-size: 0.88rem;">{{ r.title }}</b>
+                                        <small style="color: var(--text-secondary);">Vence: {{ r.due_date.strftime('%d/%m/%Y') }}</small>
+                                    </div>
+                                    <span style="font-weight: 700; color: var(--expense);">
+                                        {{ r.amount | currency_br }}
+                                    </span>
+                                </div>
+                                {% else %}
+                                <p style="color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0;">Nenhuma conta a vencer nos próximos dias! 🎉</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+
+                        <!-- Mini Card: Últimos Lançamentos -->
+                        <div class="glass-card">
+                            <div class="overview-header">
+                                <h3 class="overview-title">📑 Últimos Lançamentos</h3>
+                                <button class="btn btn-secondary btn-sm" onclick="switchTab('tab-transactions')">Extrato &rarr;</button>
+                            </div>
+                            <div class="overview-list">
+                                {% for tx in all_transactions[:4] %}
+                                <div class="overview-item">
+                                    <div style="min-width: 0; flex: 1;">
+                                        <b style="display: block; font-size: 0.88rem; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">{{ tx.description }}</b>
+                                        <small style="color: var(--text-secondary);">{{ tx.transaction_date.strftime('%d/%m/%Y') }} • {{ tx.category.name if tx.category else 'Outros' }}</small>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 0.4rem; margin-left: 0.5rem;">
+                                        <span style="font-weight: 700;" class="{% if tx.type == 'income' %}text-income{% else %}text-expense{% endif %}">
+                                            {% if tx.type == 'income' %}+{% else %}-{% endif %}{{ tx.amount | currency_br }}
+                                        </span>
+                                        <button class="btn-icon-danger" title="Excluir lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </div>
+                                {% else %}
+                                <p style="color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0;">Nenhum lançamento registrado neste mês.</p>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB 2: CONTAS & BANCOS -->
+                <section id="tab-accounts" class="tab-content">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 1rem;">
+                        <div>
+                            <h2 style="font-size: 1.25rem; font-weight: 700;">💳 Contas Bancárias & Carteiras</h2>
+                            <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.2rem;">Cadastre contas correntes, cartões e dinheiro. Os saldos são acumulados continuamente.</p>
+                        </div>
+                        <div style="display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap;">
+                            <button class="btn btn-secondary" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                                🔄 <span>Transferência Entre Contas</span>
+                            </button>
+                            <button class="btn btn-primary" onclick="openCreateAccountModal({{ current_workspace.id }})">
+                                ➕ Nova Conta
                             </button>
                         </div>
                     </div>
-                    {% endfor %}
-                {% else %}
-                    <div style="text-align: center; color: var(--text-muted); padding: 2rem;">
-                        Lista de compras vazia. Adicione itens via Telegram!
+
+                    <div class="accounts-grid">
+                        {% if accounts %}
+                            {% for acc in accounts %}
+                            <div class="account-card {% if acc.is_active == False %}inactive-account{% endif %}" id="account-card-{{ acc.id }}" style="--account-accent: {{ acc.color or '#6366f1' }};">
+                                <div class="account-header">
+                                    <div class="account-title-wrap">
+                                        <div class="account-icon-pill">{{ acc.icon }}</div>
+                                        <div>
+                                            <div class="account-name">{{ acc.name }}</div>
+                                            <div class="account-type-tag">{{ acc.type|upper }}</div>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        {% if acc.is_active != False %}
+                                            <span class="status-badge active">Ativa</span>
+                                        {% else %}
+                                            <span class="status-badge inactive">Inativa</span>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <div class="account-balance-box">
+                                    <span class="account-balance-label">Saldo Atual</span>
+                                    <span class="account-balance-val {% if acc.current_balance >= 0 %}text-income{% else %}text-expense{% endif %}">
+                                        {{ acc.current_balance | currency_br }}
+                                    </span>
+                                </div>
+
+                                <div class="account-footer-actions">
+                                    <button class="btn-action" onclick="confirmZeroAccount({{ acc.id }}, '{{ acc.name|escape }}', {{ selected_year or 'null' }}, {{ selected_month or 'null' }})" title="Zerar movimentações e saldo no mês" style="color: #fbbf24;">
+                                        🧹 Zerar Mês
+                                    </button>
+                                    <button class="btn-action" onclick='openEditAccountModal({{ acc.id }}, "{{ acc.name|escape }}", "{{ acc.type }}", {{ acc.initial_balance or 0.0 }}, "{{ acc.icon }}", "{{ acc.color }}", {{ "true" if (acc.is_active != False) else "false" }})' title="Editar Conta">
+                                        ✏️ Editar
+                                    </button>
+                                    <button class="btn-action" onclick="toggleAccountActive({{ acc.id }})" title="Ativar ou Inativar Conta">
+                                        {% if acc.is_active != False %}⏸️ Inativar{% else %}▶️ Reativar{% endif %}
+                                    </button>
+                                    <button class="btn-action delete" onclick="deleteAccount({{ acc.id }}, '{{ acc.name|escape }}')" title="Excluir Conta">
+                                        🗑️
+                                    </button>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="glass-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem; display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                                <span style="font-size: 2.2rem;">💳</span>
+                                <p style="margin: 0; font-size: 1rem; color: #fff; font-weight: 600;">Nenhuma conta configurada neste perfil.</p>
+                                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Cadastre suas contas bancárias ou carteiras para acompanhar seus saldos.</p>
+                                <button class="btn btn-primary" onclick="openCreateAccountModal({{ current_workspace.id }})">
+                                    ➕ Cadastrar Primeira Conta
+                                </button>
+                            </div>
+                        {% endif %}
                     </div>
-                {% endif %}
-            </div>
-        </section>
+                </section>
 
-    </main>
+                <!-- TAB 3: LANÇAMENTOS & EXTRATO -->
+                <section id="tab-transactions" class="tab-content">
+                    <div class="glass-card">
+                        <div class="table-toolbar">
+                            <div>
+                                <h2 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">📑 Extrato: {{ summary.month_year_label }}</h2>
+                                <small style="color: var(--text-muted);">{{ all_transactions|length }} lançamentos registrados neste mês</small>
+                            </div>
 
-    <!-- Modal: Transferência Entre Contas / Bancos / Carteiras -->
+                            <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+                                <button class="btn btn-secondary btn-sm" onclick="confirmZeroMonth({{ current_workspace.id }}, '{{ summary.month_year_label }}', {{ selected_year or 'null' }}, {{ selected_month or 'null' }})" style="color: #fbbf24; border-color: rgba(245, 158, 11, 0.35);" title="Zerar todos os lançamentos deste mês">
+                                    🧹 <span>Zerar Mês</span>
+                                </button>
+
+                                <button class="btn btn-primary btn-sm" onclick="openTransferModal()">
+                                    🔄 <span>Transferência</span>
+                                </button>
+
+                                <input type="text" id="txFilterInput" onkeyup="filterTransactionsTable(this.value)" placeholder="🔍 Buscar lançamento..." class="form-control" style="max-width: 200px; padding: 0.4rem 0.75rem; font-size: 0.82rem;">
+                                
+                                <div id="batchActionToolbar" class="batch-toolbar" style="display: none;">
+                                    <span><b id="selectedCount">0</b> selecionados</span>
+                                    <button class="btn btn-danger btn-sm" onclick="deleteSelectedTransactions()">
+                                        🗑️ Excluir Selecionados
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="table-container">
+                            <table class="custom-table" id="transactionsTable">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 36px; text-align: center;">
+                                            <input type="checkbox" id="selectAllTx" onchange="toggleSelectAllTx(this)" style="cursor: pointer; width: 16px; height: 16px;">
+                                        </th>
+                                        <th>Data</th>
+                                        <th>Tipo</th>
+                                        <th>Descrição</th>
+                                        <th>Categoria</th>
+                                        <th>Conta / Pagamento</th>
+                                        <th style="text-align: right;">Valor</th>
+                                        <th style="width: 50px; text-align: center;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% if all_transactions %}
+                                        {% for tx in all_transactions %}
+                                        <tr id="tx-row-{{ tx.id }}" class="tx-row-item">
+                                            <td style="text-align: center;">
+                                                <input type="checkbox" class="tx-checkbox" value="{{ tx.id }}" onchange="updateSelectedTxCount()" style="cursor: pointer; width: 16px; height: 16px;">
+                                            </td>
+                                            <td>{{ tx.transaction_date.strftime('%d/%m/%Y') }}</td>
+                                            <td>
+                                                {% if tx.notes and 'transfer' in tx.notes %}
+                                                    <span class="status-badge badge-transfer">
+                                                        🔄 {% if tx.type == 'income' %}Entrada Transf.{% else %}Saída Transf.{% endif %}
+                                                    </span>
+                                                {% elif tx.type == 'income' %}
+                                                    <span style="color: var(--income); font-weight: 600;">+ Entrada</span>
+                                                {% else %}
+                                                    <span style="color: var(--expense); font-weight: 600;">- Saída</span>
+                                                {% endif %}
+                                            </td>
+                                            <td style="font-weight: 500;" class="tx-desc">{{ tx.description }}</td>
+                                            <td>
+                                                <span class="category-tag">
+                                                    {{ tx.category.icon if tx.category else '🏷️' }} {{ tx.category.name if tx.category else 'Outros' }}
+                                                </span>
+                                            </td>
+                                            <td>
+                                                {% if tx.account %}
+                                                    {{ tx.account.icon }} {{ tx.account.name }}
+                                                {% else %}
+                                                    {{ tx.payment_method }}
+                                                {% endif %}
+                                            </td>
+                                            <td style="text-align: right; font-weight: 700;" class="{% if tx.type == 'income' %}text-income{% else %}text-expense{% endif %}">
+                                                {{ tx.amount | currency_br }}
+                                            </td>
+                                            <td style="text-align: center;">
+                                                <button class="btn-icon-danger" title="Excluir lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
+                                                    🗑️
+                                                </button>
+                                            </td>
+                                        </tr>
+                                        {% endfor %}
+                                    {% else %}
+                                        <tr>
+                                            <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 3rem 1rem;">
+                                                <div style="font-size: 1.8rem; margin-bottom: 0.5rem;">🍃</div>
+                                                <div style="font-weight: 600; color: #fff; margin-bottom: 0.25rem;">Nenhum lançamento registrado em {{ summary.month_year_label }}</div>
+                                                <div style="font-size: 0.85rem;">Envie gastos pelo Telegram ou navegue pelos outros meses no topo.</div>
+                                            </td>
+                                        </tr>
+                                    {% endif %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB 4: METAS & CAIXINHAS -->
+                <section id="tab-goals" class="tab-content">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+                        <div>
+                            <h2 style="font-size: 1.25rem; font-weight: 700;">🎯 Metas & Caixinhas Financeiras</h2>
+                            <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.2rem;">Acompanhe o progresso das suas reservas e sonhos.</p>
+                        </div>
+                    </div>
+
+                    <div class="goals-grid">
+                        {% if goals %}
+                            {% for g in goals %}
+                            <div class="glass-card goal-card">
+                                <div class="goal-header">
+                                    <span class="goal-title">{{ g.icon }} {{ g.title }}</span>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span class="category-tag" style="background: var(--income-bg); color: var(--income);">
+                                            {{ g.progress_percentage }}%
+                                        </span>
+                                        <button class="btn-icon-danger" title="Excluir meta" onclick="deleteGoal({{ g.id }}, '{{ g.title|replace("'", "\\'") }}')">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </div>
+                                <div class="progress-track">
+                                    <div class="progress-fill" style="width: {{ g.progress_percentage }}%;"></div>
+                                </div>
+                                <div class="goal-stats">
+                                    <span>Atual: <b>{{ g.current_amount | currency_br }}</b></span>
+                                    <span>Alvo: <b>{{ g.target_amount | currency_br }}</b></span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        {% else %}
+                            <div class="glass-card" style="grid-column: 1/-1; text-align: center; color: var(--text-muted); padding: 3rem;">
+                                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🎯</div>
+                                <p style="color: #fff; font-weight: 600; margin-bottom: 0.25rem;">Nenhuma meta cadastrada.</p>
+                                <p style="font-size: 0.85rem;">Envie <i>"Guardei 200 pra viagem"</i> ou <i>"Criar meta Reserva 5000"</i> no Telegram!</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </section>
+
+                <!-- TAB 5: CONTAS & VENCIMENTOS -->
+                <section id="tab-reminders" class="tab-content">
+                    <div class="glass-card">
+                        <div style="margin-bottom: 1.25rem;">
+                            <h2 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">⏰ Contas e Vencimentos Pendentes</h2>
+                            <small style="color: var(--text-muted);">Avisos automáticos de contas a pagar e a receber</small>
+                        </div>
+
+                        {% if reminders %}
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                {% for r in reminders %}
+                                <div class="overview-item" style="padding: 0.85rem 1rem;">
+                                    <div>
+                                        <strong style="display: block; font-size: 0.95rem; color: #fff;">{{ r.title }}</strong>
+                                        <small style="color: var(--text-secondary);">Vencimento: {{ r.due_date.strftime('%d/%m/%Y') }} • {{ '🔴 A Pagar' if r.type == 'to_pay' else '🟢 A Receber' }}</small>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                        <span style="font-weight: 700; font-size: 1.05rem;">{{ r.amount | currency_br }}</span>
+                                        <button class="btn btn-primary btn-sm" onclick="markReminderPaid({{ r.id }})">
+                                            ✅ Pagar
+                                        </button>
+                                        <button class="btn-icon-danger" title="Excluir lembrete" onclick="deleteReminder({{ r.id }}, '{{ r.title|replace("'", "\\'") }}')">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div style="text-align: center; color: var(--text-muted); padding: 3rem 1rem;">
+                                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🎉</div>
+                                <p style="color: #fff; font-weight: 600; margin-bottom: 0.25rem;">Nenhuma conta pendente para os próximos dias!</p>
+                                <p style="font-size: 0.85rem;">Todas as contas cadastradas estão em dia.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </section>
+
+                <!-- TAB 6: MÓDULO VEICULAR -->
+                <section id="tab-vehicles" class="tab-content">
+                    <div class="glass-card">
+                        {% if vehicle %}
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 1rem;">
+                            <div>
+                                <h2 style="font-size: 1.2rem; font-weight: 700; color: #fff;">🚘 {{ vehicle.name }} <small style="color: var(--text-secondary); font-size: 0.85rem;">({{ vehicle.plate }})</small></h2>
+                                <p style="color: var(--text-secondary); margin-top: 0.25rem; font-size: 0.9rem;">Odômetro Atual: <b>{{ vehicle.current_km | number_br }} km</b></p>
+                            </div>
+                            {% if vehicle_summary.oil_alert %}
+                            <div class="category-tag" style="background: var(--expense-bg); color: var(--expense); font-size: 0.85rem; padding: 0.5rem 0.85rem;">
+                                {{ vehicle_summary.oil_alert }}
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <h3 style="margin-bottom: 0.85rem; font-size: 0.95rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">Histórico de Manutenções & Abastecimentos</h3>
+                        <div class="table-container">
+                            <table class="custom-table">
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Tipo</th>
+                                        <th>Descrição</th>
+                                        <th>KM</th>
+                                        <th style="text-align: right;">Valor</th>
+                                        <th style="width: 50px; text-align: center;">Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for m in vehicle_summary.history %}
+                                    <tr>
+                                        <td>{{ m.date.strftime('%d/%m/%Y') }}</td>
+                                        <td><span class="category-tag">{{ m.type }}</span></td>
+                                        <td>{{ m.description }}</td>
+                                        <td>{{ m.km | number_br }} km</td>
+                                        <td style="text-align: right; font-weight: 600;">{{ m.amount | currency_br }}</td>
+                                        <td style="text-align: center;">
+                                            <button class="btn-icon-danger" title="Excluir registro" onclick="deleteVehicleMaintenance({{ m.id }}, '{{ m.description|replace("'", "\\'") }}')">
+                                                🗑️
+                                            </button>
+                                        </td>
+                                    </tr>
+                                    {% else %}
+                                    <tr>
+                                        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                                            Nenhum registro veicular adicionado.
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% endif %}
+                    </div>
+                </section>
+
+                <!-- TAB 7: LISTA DE MERCADO -->
+                <section id="tab-shopping" class="tab-content">
+                    <div class="glass-card">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
+                            <h2 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">🛒 {{ shopping_list.title }}</h2>
+                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Total Estimado: <b>{{ shopping_list.total_estimated | currency_br }}</b></span>
+                        </div>
+
+                        {% if shopping_list.items %}
+                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                {% for item in shopping_list.items %}
+                                <div class="overview-item {% if item.is_checked %}checked{% endif %}" style="padding: 0.75rem 1rem;">
+                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                        <input type="checkbox" {% if item.is_checked %}checked{% endif %} onchange="toggleItemFromWeb({{ item.id }})" style="cursor: pointer; width: 18px; height: 18px;">
+                                        <span style="{% if item.is_checked %}text-decoration: line-through; opacity: 0.6;{% endif %}">{{ item.name }} ({{ item.quantity|int }} {{ item.unit }})</span>
+                                    </div>
+                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                        <span style="color: var(--text-secondary);">
+                                            {% if item.estimated_price > 0 %}{{ item.estimated_price | currency_br }}{% endif %}
+                                        </span>
+                                        <button class="btn-icon-danger" title="Excluir item" onclick="deleteShoppingItem({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                </div>
+                                {% endfor %}
+                            </div>
+                        {% else %}
+                            <div style="text-align: center; color: var(--text-muted); padding: 3rem 1rem;">
+                                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🛒</div>
+                                <p style="color: #fff; font-weight: 600; margin-bottom: 0.25rem;">Lista de compras vazia.</p>
+                                <p style="font-size: 0.85rem;">Adicione itens via Telegram enviando mensagens ou fotos da sua lista.</p>
+                            </div>
+                        {% endif %}
+                    </div>
+                </section>
+
+            </main>
+        </div>
+    </div>
+
+    <!-- MODAL: Transferência Entre Contas -->
     <div id="transferModal" class="modal-backdrop" onclick="if(event.target === this) closeTransferModal()">
         <div class="modal-content" style="max-width: 520px;">
             <div class="modal-header">
@@ -650,7 +1756,7 @@
 
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" onclick="closeTransferModal()">Cancelar</button>
-                    <button type="submit" class="btn btn-primary" id="transferSubmitBtn" style="background: linear-gradient(135deg, #8b5cf6, #6366f1);">
+                    <button type="submit" class="btn btn-primary" id="transferSubmitBtn">
                         Confirmar Transferência 🔄
                     </button>
                 </div>
@@ -658,26 +1764,98 @@
         </div>
     </div>
 
-    <!-- Modal: Cadastro / Edição de Conta Bancária -->
+    <!-- MODAL: Cadastro / Edição de Conta Bancária -->
     <div id="accountModal" class="modal-backdrop" onclick="if(event.target === this) closeAccountModal()">
         <div class="modal-content">
             <div class="modal-header">
                 <h3 id="accountModalTitle">💳 Nova Conta / Banco</h3>
                 <button type="button" class="modal-close" onclick="closeAccountModal()">&times;</button>
             </div>
-            <form id="accountForm" onsubmit="saveAccountForm(event)">
+            <form id="accountForm" onsubmit="saveAccountForm(event)" style="padding: 1.25rem; max-height: 80vh; overflow-y: auto;">
                 <input type="hidden" id="accWorkspaceId" value="{{ current_workspace.id }}">
                 <input type="hidden" id="accId" value="">
 
+                <!-- Live Card Preview -->
+                <div class="account-card-preview" id="accPreviewCard" style="display: flex; align-items: center; gap: 0.85rem; padding: 0.75rem 1rem; border-radius: var(--radius-md); background: #1e293b; border: 1px solid var(--border-card); border-left: 5px solid #6366f1; margin-bottom: 1.15rem; box-shadow: 0 4px 12px rgba(0,0,0,0.3);">
+                    <div id="accPreviewIcon" style="width: 38px; height: 38px; border-radius: var(--radius-md); background: rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: center; font-size: 1.35rem; flex-shrink: 0;">
+                        🏦
+                    </div>
+                    <div style="flex: 1; min-width: 0;">
+                        <div id="accPreviewName" style="font-weight: 700; color: #fff; font-size: 0.98rem; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">Nome da Conta</div>
+                        <div id="accPreviewType" style="font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">CONTA CORRENTE</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.4rem;">
+                        <span id="accPreviewColorBadge" style="width: 14px; height: 14px; border-radius: 50%; background: #6366f1; display: inline-block; border: 2px solid rgba(255,255,255,0.2);" title="Cor da Conta"></span>
+                    </div>
+                </div>
+
+                <!-- Quick Bank / Institution Presets -->
+                <div class="form-group" style="margin-bottom: 1.15rem;">
+                    <label style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); display: flex; justify-content: space-between; align-items: center;">
+                        <span>🏦 Escolha seu Banco ou Instituição</span>
+                        <small style="color: var(--text-muted); font-weight: 400; text-transform: none;">Clique para preencher rápido</small>
+                    </label>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(135px, 1fr)); gap: 0.45rem; max-height: 140px; overflow-y: auto; padding: 0.4rem; background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-md);">
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Nubank', '🟣', '#820ad1', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(130,10,209,0.12); border: 1px solid rgba(130,10,209,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🟣</span> <span style="font-weight: 600;">Nubank</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Caixa', '🔵', '#005ca9', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(0,92,169,0.12); border: 1px solid rgba(0,92,169,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🔵</span> <span style="font-weight: 600;">Caixa</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Banco do Brasil', '🟡', '#fcee21', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(252,238,33,0.12); border: 1px solid rgba(252,238,33,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🟡</span> <span style="font-weight: 600;">Banco do Brasil</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Santander', '🔴', '#ec0000', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(236,0,0,0.12); border: 1px solid rgba(236,0,0,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🔴</span> <span style="font-weight: 600;">Santander</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Itaú', '🟠', '#ec7000', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(236,112,0,0.12); border: 1px solid rgba(236,112,0,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🟠</span> <span style="font-weight: 600;">Itaú</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Bradesco', '🔴', '#cc092f', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(204,9,47,0.12); border: 1px solid rgba(204,9,47,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🔴</span> <span style="font-weight: 600;">Bradesco</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Banco Inter', '🟠', '#ff7a00', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(255,122,0,0.12); border: 1px solid rgba(255,122,0,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🟠</span> <span style="font-weight: 600;">Inter</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('C6 Bank', '⚫', '#334155', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>⚫</span> <span style="font-weight: 600;">C6 Bank</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('PicPay', '🟢', '#11c76f', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(17,199,111,0.12); border: 1px solid rgba(17,199,111,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🟢</span> <span style="font-weight: 600;">PicPay</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Mercado Pago', '🔵', '#009ee3', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(0,158,227,0.12); border: 1px solid rgba(0,158,227,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🔵</span> <span style="font-weight: 600;">Mercado Pago</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Sicoob', '🟢', '#003641', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(0,54,65,0.3); border: 1px solid rgba(0,170,166,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🟢</span> <span style="font-weight: 600;">Sicoob</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Sicredi', '🟢', '#006530', 'checking')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(0,101,48,0.25); border: 1px solid rgba(0,101,48,0.4); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🟢</span> <span style="font-weight: 600;">Sicredi</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('BTG Pactual', '🔵', '#001e62', 'investment')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(0,30,98,0.3); border: 1px solid rgba(0,70,200,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🔵</span> <span style="font-weight: 600;">BTG Pactual</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Dinheiro', '💵', '#10b981', 'cash')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(16,185,129,0.12); border: 1px solid rgba(16,185,129,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>💵</span> <span style="font-weight: 600;">Dinheiro</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Poupança', '🐷', '#f43f5e', 'savings')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(244,63,94,0.12); border: 1px solid rgba(244,63,94,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>🐷</span> <span style="font-weight: 600;">Poupança</span>
+                        </button>
+                        <button type="button" class="btn-bank-preset" onclick="selectBankPreset('Investimentos', '📈', '#eab308', 'investment')" style="display: flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.6rem; border-radius: var(--radius-sm); background: rgba(234,179,8,0.12); border: 1px solid rgba(234,179,8,0.35); color: #fff; font-size: 0.8rem; cursor: pointer; text-align: left;">
+                            <span>📈</span> <span style="font-weight: 600;">Investimentos</span>
+                        </button>
+                    </div>
+                </div>
+
                 <div class="form-group">
                     <label for="accName">Nome da Conta / Banco *</label>
-                    <input type="text" id="accName" class="form-control" placeholder="Ex: Nubank, Carteira, Banco do Brasil" required>
+                    <input type="text" id="accName" class="form-control" placeholder="Ex: Nubank, Carteira, Caixa, Banco do Brasil" oninput="updateAccountPreview()" required>
                 </div>
 
                 <div class="form-row">
                     <div class="form-group">
                         <label for="accType">Tipo de Conta</label>
-                        <select id="accType" class="form-control">
+                        <select id="accType" class="form-control" onchange="updateAccountPreview()">
                             <option value="checking">Conta Corrente</option>
                             <option value="savings">Poupança</option>
                             <option value="credit_card">Cartão de Crédito</option>
@@ -686,20 +1864,48 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label for="accIcon">Ícone / Emoji</label>
-                        <input type="text" id="accIcon" class="form-control" value="🏦" placeholder="🏦">
+                        <label for="accColor">Cor de Destaque</label>
+                        <input type="color" id="accColor" class="form-control" value="#6366f1" onchange="updateAccountPreview()" style="height: 42px; padding: 2px 4px; cursor: pointer;">
                     </div>
                 </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="accInitialBalance">Saldo Inicial (R$)</label>
-                        <input type="number" step="0.01" id="accInitialBalance" class="form-control" value="0.00">
+                <!-- Emoji Picker Palette -->
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.4rem;">
+                        <label for="accIcon" style="margin: 0; font-size: 0.8rem;">Emoji / Ícone Selecionado</label>
+                        <input type="text" id="accIcon" class="form-control" value="🏦" oninput="updateAccountPreview()" style="width: 60px; text-align: center; font-size: 1.15rem; padding: 0.2rem 0.4rem;">
                     </div>
-                    <div class="form-group">
-                        <label for="accColor">Cor de Destaque</label>
-                        <input type="color" id="accColor" class="form-control" value="#6366f1" style="height: 42px; padding: 2px 4px; cursor: pointer;">
+                    
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.5rem; background: rgba(255,255,255,0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); max-height: 85px; overflow-y: auto;">
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🟣')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🟣</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🔵')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🔵</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🟡')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🟡</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🔴')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🔴</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🟠')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🟠</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🟢')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🟢</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('⚫')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">⚫</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🏦')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🏦</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🏛️')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🏛️</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('💳')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">💳</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('💵')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">💵</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('💰')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">💰</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🪙')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🪙</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🐷')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🐷</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('📈')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">📈</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('💎')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">💎</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('💼')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">💼</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('👛')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">👛</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🛒')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🛒</button>
+                        <button type="button" class="btn-emoji-pick" onclick="selectAccountEmoji('🚗')" style="background: none; border: 1px solid rgba(255,255,255,0.1); border-radius: 6px; font-size: 1.15rem; cursor: pointer; width: 32px; height: 32px; display: flex; align-items: center; justify-content: center;">🚗</button>
                     </div>
+                </div>
+
+                <div class="form-group" style="margin-bottom: 1rem;">
+                    <label for="accInitialBalance">Saldo Inicial (R$)</label>
+                    <input type="number" step="0.01" id="accInitialBalance" class="form-control" value="0.00">
+                    <small style="color: var(--text-muted); font-size: 0.75rem; margin-top: 2px;">
+                        💡 Saldo existente antes de hoje. Se for lançar a receita depois, deixe 0,00.
+                    </small>
                 </div>
 
                 <div class="form-group" id="accActiveGroup" style="display: none; margin-top: 0.5rem;">
@@ -709,7 +1915,7 @@
                     </label>
                 </div>
 
-                <div class="modal-footer">
+                <div class="modal-footer" style="padding: 0; margin-top: 1rem;">
                     <button type="button" class="btn btn-secondary" onclick="closeAccountModal()">Cancelar</button>
                     <button type="submit" class="btn btn-primary" id="accSubmitBtn">Salvar Conta</button>
                 </div>
@@ -717,8 +1923,7 @@
         </div>
     </div>
 
-    <!-- Workspace / Profile Settings Modal -->
-    <!-- Workspace / Profile & User Settings Modal -->
+    <!-- MODAL: Configurações do Sistema (Perfis, Usuários, Tokens) -->
     <div id="workspaceSettingsModal" class="modal-backdrop" onclick="if(event.target === this) closeWorkspaceSettingsModal()">
         <div class="modal-card" style="max-width: 720px;">
             <div class="modal-header">
@@ -734,6 +1939,9 @@
                 <button type="button" class="btn btn-secondary btn-sm" id="btn-config-users" onclick="switchConfigSubTab('users')" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-weight: 600;">
                     👥 Usuários & Acessos ({{ workspace_members|length }})
                 </button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-config-tokens" onclick="switchConfigSubTab('tokens')" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-weight: 600;">
+                    🤖 Tokens & IA (Telegram / Gemini)
+                </button>
             </div>
 
             <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.25rem; padding: 1.25rem;">
@@ -742,9 +1950,9 @@
                 <div id="config-section-profiles" style="display: flex; flex-direction: column; gap: 1.25rem;">
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
                         <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">
-                            Gerencie os perfis financeiros do sistema (Pessoal PF, Empresa PJ, Família, etc.).
+                            Gerencie os perfis financeiros do sistema (Pessoal PF, Empresa PJ, Família).
                         </p>
-                        <button type="button" class="btn btn-primary" onclick="toggleNewWorkspaceForm()" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="toggleNewWorkspaceForm()">
                             ➕ Novo Perfil
                         </button>
                     </div>
@@ -772,19 +1980,16 @@
                         </div>
 
                         <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem;">
-                            <button type="button" class="btn btn-secondary" onclick="hideWorkspaceForm()" style="font-size: 0.85rem; padding: 0.35rem 0.75rem;">Cancelar</button>
-                            <button type="submit" class="btn btn-primary" id="wsSubmitBtn" style="font-size: 0.85rem; padding: 0.35rem 0.85rem;">Salvar Perfil</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="hideWorkspaceForm()">Cancelar</button>
+                            <button type="submit" class="btn btn-primary btn-sm" id="wsSubmitBtn">Salvar Perfil</button>
                         </div>
                     </form>
 
                     <!-- Lista de Perfis Existentes -->
                     <div class="workspace-list-container">
-                        <h4 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem; text-transform: uppercase; letter-spacing: 0.5px;">
-                            Perfis Cadastrados ({{ user_workspaces|length }})
-                        </h4>
                         <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 320px; overflow-y: auto;">
                             {% for ws in user_workspaces %}
-                            <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.02); {% if ws.id == current_workspace.id %}border: 1px solid var(--primary);{% else %}border: 1px solid rgba(255,255,255,0.06);{% endif %}">
+                            <div class="overview-item" style="padding: 0.75rem 1rem; {% if ws.id == current_workspace.id %}border: 1px solid var(--primary);{% endif %}">
                                 <div style="display: flex; align-items: center; gap: 0.75rem;">
                                     <div style="font-size: 1.3rem;">
                                         {% if ws.type == 'business' %}🏢{% elif ws.type == 'family' %}👨‍👩‍👧‍👦{% else %}👤{% endif %}
@@ -793,7 +1998,7 @@
                                         <div style="font-weight: 600; color: #fff; font-size: 0.95rem;">
                                             {{ ws.name }}
                                             {% if ws.id == current_workspace.id %}
-                                            <span class="status-badge active" style="font-size: 0.7rem; padding: 2px 6px; margin-left: 6px;">Atual</span>
+                                            <span class="status-badge active" style="font-size: 0.68rem; padding: 2px 6px; margin-left: 6px;">Atual</span>
                                             {% endif %}
                                         </div>
                                         <div style="font-size: 0.75rem; color: var(--text-muted);">
@@ -804,7 +2009,7 @@
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 0.4rem;">
                                     {% if ws.id != current_workspace.id %}
-                                    <button type="button" class="btn btn-secondary" onclick="switchToWorkspace({{ ws.id }})" title="Acessar este perfil" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="switchToWorkspace({{ ws.id }})" title="Acessar este perfil">
                                         Acessar
                                     </button>
                                     {% endif %}
@@ -821,7 +2026,7 @@
                     </div>
                 </div>
 
-                <!-- SECTION 2: GESTÃO DE USUÁRIOS & ACESSOS (WEB & TELEGRAM) -->
+                <!-- SECTION 2: GESTÃO DE USUÁRIOS & ACESSOS -->
                 <div id="config-section-users" style="display: none; flex-direction: column; gap: 1.25rem;">
                     
                     <!-- Invite Code & Fast Share Box -->
@@ -829,21 +2034,21 @@
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
                             <div>
                                 <span style="font-weight: 700; color: #fff; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
-                                    🔗 Link de Convite do Perfil: <span style="color: #a78bfa;">{{ current_workspace.name }}</span>
+                                    🔗 Link de Convite: <span style="color: #a78bfa;">{{ current_workspace.name }}</span>
                                 </span>
                                 <small style="color: var(--text-secondary); display: block; margin-top: 2px;">
-                                    Envie este link para qualquer pessoa começar a lançar gastos neste perfil com 1 clique no Telegram!
+                                    Envie para alguém começar a lançar gastos neste perfil via Telegram!
                                 </small>
                             </div>
                             
                             <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                                <button type="button" class="btn btn-primary btn-sm" onclick="copyInviteLink('{{ invite_link }}')" style="display: inline-flex; align-items: center; gap: 0.35rem; background: var(--primary);">
+                                <button type="button" class="btn btn-primary btn-sm" onclick="copyInviteLink('{{ invite_link }}')">
                                     📋 <span>Copiar Link</span>
                                 </button>
-                                <button type="button" class="btn btn-sm" onclick="shareViaWhatsApp('{{ current_workspace.name }}', '{{ invite_link }}')" style="background: #25D366; color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 0.35rem; border: none;">
+                                <button type="button" class="btn btn-sm" onclick="shareViaWhatsApp('{{ current_workspace.name }}', '{{ invite_link }}')" style="background: #25D366; color: #fff; font-weight: 600; border: none;">
                                     💬 <span>WhatsApp</span>
                                 </button>
-                                <button type="button" class="btn btn-sm" onclick="shareViaTelegram('{{ current_workspace.name }}', '{{ invite_link }}')" style="background: #229ED9; color: #fff; font-weight: 600; display: inline-flex; align-items: center; gap: 0.35rem; border: none;">
+                                <button type="button" class="btn btn-sm" onclick="shareViaTelegram('{{ current_workspace.name }}', '{{ invite_link }}')" style="background: #229ED9; color: #fff; font-weight: 600; border: none;">
                                     ✈️ <span>Telegram</span>
                                 </button>
                             </div>
@@ -851,9 +2056,8 @@
 
                         <div style="margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid rgba(255,255,255,0.08); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
                             <div style="font-size: 0.8rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.4rem;">
-                                <span>Código de Convite:</span>
-                                <code style="background: rgba(0,0,0,0.5); padding: 0.2rem 0.55rem; border-radius: 4px; color: #818cf8; font-weight: 700; letter-spacing: 0.5px;">{{ current_workspace.invite_code }}</code>
-                                <span>(Comando bot: <code>/entrar {{ current_workspace.invite_code }}</code>)</span>
+                                <span>Código:</span>
+                                <code style="background: rgba(0,0,0,0.5); padding: 0.2rem 0.55rem; border-radius: 4px; color: #818cf8; font-weight: 700;">{{ current_workspace.invite_code }}</code>
                             </div>
                             <button type="button" class="btn btn-secondary btn-sm" onclick="openShareModalForUser('Novo Convidado', '{{ invite_link }}')" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
                                 ✉️ Ver Mensagem Pronta
@@ -864,9 +2068,8 @@
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
                         <div>
                             <h4 style="font-size: 0.95rem; font-weight: 700; color: #fff; margin: 0;">👥 Usuários com Acesso</h4>
-                            <small style="color: var(--text-muted);">Usuários autorizados a lançar despesas, receitas e consultar o perfil via Web e Telegram.</small>
                         </div>
-                        <button type="button" class="btn btn-primary" onclick="toggleNewUserForm()" style="font-size: 0.85rem; padding: 0.4rem 0.8rem;">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="toggleNewUserForm()">
                             ➕ Adicionar Usuário
                         </button>
                     </div>
@@ -884,7 +2087,7 @@
                                 <input type="text" id="usrNameInput" class="form-control" placeholder="Ex: Maria Silva, Carlos Sócio" required>
                             </div>
                             <div class="form-group">
-                                <label for="usrTelegramInput">Telegram @username ou ID numérico (Opcional)</label>
+                                <label for="usrTelegramInput">Telegram @username ou ID numérico</label>
                                 <input type="text" id="usrTelegramInput" class="form-control" placeholder="Ex: @mariasilva ou 12345678">
                             </div>
                         </div>
@@ -893,33 +2096,29 @@
                             <div class="form-group">
                                 <label for="usrRoleInput">Papel / Nível de Acesso</label>
                                 <select id="usrRoleInput" class="form-control">
-                                    <option value="member">👤 Membro (Lançar e Consultar)</option>
-                                    <option value="admin">🛡️ Administrador (Acesso Total)</option>
-                                    <option value="owner">👑 Proprietário / Dono</option>
+                                    <option value="member">👤 Membro</option>
+                                    <option value="admin">🛡️ Administrador</option>
+                                    <option value="owner">👑 Proprietário</option>
                                 </select>
                             </div>
                             <div class="form-group" style="display: flex; align-items: flex-end; padding-bottom: 0.6rem;">
                                 <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--text-primary); font-size: 0.9rem;">
                                     <input type="checkbox" id="usrIsActive" checked style="width: 18px; height: 18px;">
-                                    <span>Usuário Ativo (Acesso Liberado)</span>
+                                    <span>Usuário Ativo</span>
                                 </label>
                             </div>
                         </div>
 
-                        <div style="background: rgba(99, 102, 241, 0.06); border: 1px dashed rgba(99, 102, 241, 0.3); border-radius: 6px; padding: 0.6rem 0.75rem; margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-secondary);">
-                            💡 <b>Dica de Envio:</b> Ao salvar o usuário, você receberá a opção de enviar o link de convite imediatamente pelo WhatsApp ou Telegram!
-                        </div>
-
                         <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem;">
-                            <button type="button" class="btn btn-secondary" onclick="hideUserForm()" style="font-size: 0.85rem; padding: 0.35rem 0.75rem;">Cancelar</button>
-                            <button type="submit" class="btn btn-primary" id="usrSubmitBtn" style="font-size: 0.85rem; padding: 0.35rem 0.85rem;">Salvar Usuário & Gerar Convite</button>
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="hideUserForm()">Cancelar</button>
+                            <button type="submit" class="btn btn-primary btn-sm" id="usrSubmitBtn">Salvar Usuário</button>
                         </div>
                     </form>
 
                     <!-- Lista de Usuários do Workspace -->
                     <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 320px; overflow-y: auto;">
                         {% for mem in workspace_members %}
-                        <div class="glass-card" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-radius: 8px; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06);">
+                        <div class="overview-item" style="padding: 0.75rem 1rem;">
                             <div style="display: flex; align-items: center; gap: 0.75rem;">
                                 <div style="font-size: 1.4rem;">
                                     {% if mem.role == 'owner' %}👑{% elif mem.role == 'admin' %}🛡️{% else %}👤{% endif %}
@@ -927,19 +2126,7 @@
                                 <div>
                                     <div style="font-weight: 600; color: #fff; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
                                         {{ mem.name }}
-                                        {% if mem.role == 'owner' %}
-                                        <span class="category-tag" style="background: rgba(245, 158, 11, 0.15); color: #fbbf24; font-size: 0.7rem; padding: 2px 6px;">Proprietário</span>
-                                        {% elif mem.role == 'admin' %}
-                                        <span class="category-tag" style="background: rgba(99, 102, 241, 0.15); color: #818cf8; font-size: 0.7rem; padding: 2px 6px;">Admin</span>
-                                        {% else %}
-                                        <span class="category-tag" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.7rem; padding: 2px 6px;">Membro</span>
-                                        {% endif %}
-
-                                        {% if mem.is_active != False %}
-                                        <span class="status-badge active" style="font-size: 0.65rem; padding: 1px 5px;">Ativo</span>
-                                        {% else %}
-                                        <span class="badge-status inactive" style="font-size: 0.65rem; padding: 1px 5px;">Inativo</span>
-                                        {% endif %}
+                                        <span class="category-tag" style="font-size: 0.7rem; padding: 1px 6px;">{{ mem.role|upper }}</span>
                                     </div>
                                     <div style="font-size: 0.75rem; color: var(--text-muted);">
                                         Telegram: {% if mem.username %}<b>@{{ mem.username }}</b>{% else %}<code>{{ mem.telegram_id }}</code>{% endif %}
@@ -947,7 +2134,7 @@
                                 </div>
                             </div>
                             <div style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
-                                <button type="button" class="btn btn-sm btn-secondary" onclick="openShareModalForUser('{{ mem.name|replace("'", "\\'") }}', '{{ invite_link }}')" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 0.25rem; color: #818cf8;" title="Enviar Link de Convite para este usuário">
+                                <button type="button" class="btn btn-sm btn-secondary" onclick="openShareModalForUser('{{ mem.name|replace("'", "\\'") }}', '{{ invite_link }}')" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; color: #818cf8;" title="Enviar Link de Convite">
                                     🔗 <span>Convite</span>
                                 </button>
                                 <button type="button" class="btn-action edit" onclick='openEditUserForm({{ mem.id }}, "{{ mem.name|replace("'", "\\'") }}", "{{ mem.username or "" }}", "{{ mem.telegram_id }}", "{{ mem.role }}", {{ "true" if (mem.is_active != False) else "false" }})' title="Editar usuário">
@@ -969,60 +2156,276 @@
                     </div>
                 </div>
 
+                <!-- SECTION 3: TOKENS & INTEGRAÇÕES -->
+                <div id="config-section-tokens" style="display: none; flex-direction: column; gap: 1.25rem;">
+                    <div>
+                        <h4 style="font-size: 0.95rem; font-weight: 700; color: #fff; margin: 0;">
+                            🤖 Conexões (Telegram Bot & Google Gemini)
+                        </h4>
+                        <small style="color: var(--text-muted);">Gerencie os tokens de API para o bot e IA</small>
+                    </div>
+
+                    <form id="systemTokensForm" onsubmit="saveSystemTokens(event)" style="display: flex; flex-direction: column; gap: 1.25rem;">
+                        <!-- Card Telegram Token -->
+                        <div class="glass-card" style="padding: 1.15rem; border-radius: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="font-size: 1.4rem;">✈️</span>
+                                    <div>
+                                        <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">Token do Telegram Bot</div>
+                                    </div>
+                                </div>
+                                <span id="telegramStatusBadge" class="status-badge" style="background: rgba(255,255,255,0.08); color: var(--text-muted); font-size: 0.75rem; padding: 3px 8px;">Carregando...</span>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0.75rem;">
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <input type="password" id="cfgTelegramToken" class="form-control" placeholder="Ex: 1234567890:ABCdefGHIjklMNOpqrsTUVwxyz" style="padding-right: 2.75rem; font-family: monospace; font-size: 0.85rem;" autocomplete="off">
+                                    <button type="button" onclick="toggleTokenVisibility('cfgTelegramToken', 'tgEyeIcon')" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1rem; padding: 4px;" title="Mostrar/Ocultar Token">
+                                        <span id="tgEyeIcon">👁️</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">
+                                    💡 Obtenha com o <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" style="color: #229ED9; font-weight: 600; text-decoration: underline;">@BotFather</a> no Telegram.
+                                </div>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="testTelegramConnection()" id="btnTestTelegram">
+                                    🧪 <span>Testar Conexão</span>
+                                </button>
+                            </div>
+                            <div id="telegramTestResult" style="display: none; margin-top: 0.6rem; font-size: 0.8rem; padding: 0.5rem 0.75rem; border-radius: 6px;"></div>
+                        </div>
+
+                        <!-- Card Gemini AI Token -->
+                        <div class="glass-card" style="padding: 1.15rem; border-radius: 10px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="font-size: 1.4rem;">🧠</span>
+                                    <div>
+                                        <div style="font-weight: 700; color: #fff; font-size: 0.95rem;">Chave de API (Google Gemini)</div>
+                                    </div>
+                                </div>
+                                <span id="geminiStatusBadge" class="status-badge" style="background: rgba(255,255,255,0.08); color: var(--text-muted); font-size: 0.75rem; padding: 3px 8px;">Carregando...</span>
+                            </div>
+
+                            <div class="form-group" style="margin-bottom: 0.75rem;">
+                                <div style="position: relative; display: flex; align-items: center;">
+                                    <input type="password" id="cfgGeminiKey" class="form-control" placeholder="Ex: AIzaSy..." style="padding-right: 2.75rem; font-family: monospace; font-size: 0.85rem;" autocomplete="off">
+                                    <button type="button" onclick="toggleTokenVisibility('cfgGeminiKey', 'gemEyeIcon')" style="position: absolute; right: 8px; background: none; border: none; cursor: pointer; color: var(--text-muted); font-size: 1rem; padding: 4px;" title="Mostrar/Ocultar Chave">
+                                        <span id="gemEyeIcon">👁️</span>
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div style="font-size: 0.78rem; color: var(--text-muted);">
+                                    💡 Obtenha gratuitamente em <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" style="color: #818cf8; font-weight: 600; text-decoration: underline;">Google AI Studio</a>.
+                                </div>
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="testGeminiConnection()" id="btnTestGemini">
+                                    🧪 <span>Testar Conexão</span>
+                                </button>
+                            </div>
+                            <div id="geminiTestResult" style="display: none; margin-top: 0.6rem; font-size: 0.8rem; padding: 0.5rem 0.75rem; border-radius: 6px;"></div>
+                        </div>
+
+                        <!-- Feedback Alert -->
+                        <div id="tokensSaveAlert" style="display: none; font-size: 0.85rem; padding: 0.75rem 1rem; border-radius: 8px;"></div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.5rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="loadSystemTokens()">
+                                🔄 Recarregar
+                            </button>
+                            <button type="submit" class="btn btn-primary btn-sm" id="btnSaveTokens" style="font-weight: 700;">
+                                💾 <span>Salvar Tokens</span>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
             </div>
-            <div class="modal-footer" style="margin-top: 1rem;">
-                <button type="button" class="btn btn-secondary" onclick="closeWorkspaceSettingsModal()">Fechar</button>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="closeWorkspaceSettingsModal()">Fechar</button>
             </div>
         </div>
     </div>
 
-    <!-- Modal Compartilhar Convite de Acesso -->
+    <!-- MODAL: Compartilhar Convite -->
     <div id="shareInviteModal" class="modal-overlay" style="display: none; align-items: center; justify-content: center; z-index: 1200;">
-        <div class="glass-card modal-content" style="max-width: 520px; width: 92%; padding: 1.5rem; border-radius: var(--radius-lg); border: 1px solid rgba(99, 102, 241, 0.4); box-shadow: 0 10px 40px rgba(0,0,0,0.6); position: relative;">
-            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255,255,255,0.1); padding-bottom: 0.75rem; margin-bottom: 1rem;">
-                <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
-                    🎉 <span>Enviar Convite de Acesso</span>
-                </h3>
-                <button type="button" class="btn-close" onclick="closeShareInviteModal()" style="background: none; border: none; font-size: 1.3rem; color: var(--text-muted); cursor: pointer;">&times;</button>
+        <div class="modal-content" style="max-width: 520px; width: 92%;">
+            <div class="modal-header">
+                <h3>🎉 Enviar Convite de Acesso</h3>
+                <button type="button" class="btn-close" onclick="closeShareInviteModal()">&times;</button>
             </div>
 
             <div class="modal-body" style="display: flex; flex-direction: column; gap: 1rem;">
                 <p style="color: var(--text-primary); font-size: 0.95rem; margin: 0; line-height: 1.4;">
-                    Envie o link abaixo para <b id="shareTargetName" style="color: #a78bfa;">o usuário</b> ingressar no perfil <b style="color: #fff;">{{ current_workspace.name }}</b> e começar a lançar gastos:
+                    Envie o link abaixo para <b id="shareTargetName" style="color: #a78bfa;">o usuário</b> ingressar no perfil <b style="color: #fff;">{{ current_workspace.name }}</b>:
                 </p>
 
-                <!-- Link Display Input with Copy Button -->
                 <div style="display: flex; gap: 0.5rem; align-items: center;">
-                    <input type="text" id="shareInviteLinkInput" readonly value="{{ invite_link }}" class="form-control" style="font-size: 0.85rem; font-family: monospace; background: rgba(0,0,0,0.4); color: #818cf8; font-weight: 600;">
-                    <button type="button" class="btn btn-primary" onclick="copyInviteLinkFromInput()" style="white-space: nowrap; display: inline-flex; align-items: center; gap: 0.35rem;">
+                    <input type="text" id="shareInviteLinkInput" readonly value="{{ invite_link }}" class="form-control" style="font-size: 0.85rem; font-family: monospace; color: #818cf8; font-weight: 600;">
+                    <button type="button" class="btn btn-primary btn-sm" onclick="copyInviteLinkFromInput()">
                         📋 <span id="copyBtnText">Copiar</span>
                     </button>
                 </div>
 
-                <!-- Fast Share Buttons (WhatsApp & Telegram) -->
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-                    <button type="button" class="btn" onclick="shareModalViaWhatsApp('{{ current_workspace.name }}')" style="background: #25D366; color: #fff; font-weight: 700; padding: 0.6rem 1rem; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; gap: 0.5rem; text-decoration: none; border: none; cursor: pointer;">
-                        💬 <span>Enviar no WhatsApp</span>
+                    <button type="button" class="btn" onclick="shareModalViaWhatsApp('{{ current_workspace.name }}')" style="background: #25D366; color: #fff; font-weight: 700;">
+                        💬 <span>WhatsApp</span>
                     </button>
-                    <button type="button" class="btn" onclick="shareModalViaTelegram('{{ current_workspace.name }}')" style="background: #229ED9; color: #fff; font-weight: 700; padding: 0.6rem 1rem; border-radius: var(--radius-md); display: flex; align-items: center; justify-content: center; gap: 0.5rem; text-decoration: none; border: none; cursor: pointer;">
-                        ✈️ <span>Enviar no Telegram</span>
+                    <button type="button" class="btn" onclick="shareModalViaTelegram('{{ current_workspace.name }}')" style="background: #229ED9; color: #fff; font-weight: 700;">
+                        ✈️ <span>Telegram</span>
                     </button>
-                </div>
-
-                <!-- How it works explanation -->
-                <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: var(--radius-md); padding: 0.75rem 0.9rem; font-size: 0.8rem; color: var(--text-secondary); line-height: 1.4;">
-                    💡 <b>Como o convidado ingressa:</b><br>
-                    1. Ele clica no link e o Telegram abre o bot <b>@{{ bot_username }}</b>.<br>
-                    2. Ao clicar em <b>COMEÇAR</b> (ou Start), ele é vinculado automaticamente ao perfil <b>{{ current_workspace.name }}</b>.<br>
-                    3. Pronto! Ele já pode enviar gastos e receitas por áudio, fotos e mensagens de texto.
                 </div>
             </div>
 
-            <div class="modal-footer" style="display: flex; justify-content: flex-end; margin-top: 1rem; padding-top: 0.75rem; border-top: 1px solid rgba(255,255,255,0.1);">
-                <button type="button" class="btn btn-secondary" onclick="closeShareInviteModal()">Concluir</button>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary btn-sm" onclick="closeShareInviteModal()">Concluir</button>
             </div>
         </div>
     </div>
+
+    <!-- MODAL: Central de Exportação e Filtro de Relatórios -->
+    <div id="reportExportModal" class="modal-backdrop" onclick="if(event.target === this) closeReportExportModal()">
+        <div class="modal-card" style="max-width: 620px;">
+            <div class="modal-header">
+                <h3 class="modal-title">📊 Central de Relatórios & Exportação</h3>
+                <button type="button" class="modal-close" onclick="closeReportExportModal()">&times;</button>
+            </div>
+
+            <form id="reportExportForm" onsubmit="submitCustomReport(event)" class="modal-body" style="display: flex; flex-direction: column; gap: 1.25rem; padding: 1.25rem;">
+                <input type="hidden" id="repWorkspaceId" value="{{ current_workspace.id }}">
+
+                <!-- Format Selection (Excel vs PDF) -->
+                <div>
+                    <label style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">
+                        Formato do Documento *
+                    </label>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
+                        <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 1rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: rgba(255,255,255,0.03); cursor: pointer;">
+                            <input type="radio" name="repFormat" value="excel" checked style="width: 18px; height: 18px;">
+                            <span style="display: flex; align-items: center; gap: 0.4rem; font-weight: 600; color: #fff;">
+                                📥 Planilha Excel (.xlsx)
+                            </span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 0.6rem; padding: 0.75rem 1rem; border: 1px solid var(--border-subtle); border-radius: var(--radius-md); background: rgba(255,255,255,0.03); cursor: pointer;">
+                            <input type="radio" name="repFormat" value="pdf" style="width: 18px; height: 18px;">
+                            <span style="display: flex; align-items: center; gap: 0.4rem; font-weight: 600; color: #fff;">
+                                📄 Relatório PDF (.pdf)
+                            </span>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Period Presets & Custom Dates -->
+                <div>
+                    <label style="font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); display: block; margin-bottom: 0.5rem;">
+                        Período dos Dados *
+                    </label>
+                    <div style="display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem;">
+                        <button type="button" class="btn btn-secondary btn-sm period-preset-btn active" data-preset="current_month" onclick="setReportPeriod('current_month')" style="background: var(--primary); color: #fff; border-color: var(--primary);">
+                            Mês Atual
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm period-preset-btn" data-preset="last_month" onclick="setReportPeriod('last_month')">
+                            Mês Anterior
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm period-preset-btn" data-preset="last_3_months" onclick="setReportPeriod('last_3_months')">
+                            Últimos 3 Meses
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm period-preset-btn" data-preset="current_year" onclick="setReportPeriod('current_year')">
+                            Ano Atual
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm period-preset-btn" data-preset="custom" onclick="setReportPeriod('custom')">
+                            📅 Personalizado
+                        </button>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="repStartDate" style="font-size: 0.78rem;">Data Inicial</label>
+                            <input type="date" id="repStartDate" class="form-control" required>
+                        </div>
+                        <div class="form-group" style="margin-bottom: 0;">
+                            <label for="repEndDate" style="font-size: 0.78rem;">Data Final</label>
+                            <input type="date" id="repEndDate" class="form-control" required>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Account & Type Filters -->
+                <div class="form-row">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="repAccountId">Filtrar por Conta</label>
+                        <select id="repAccountId" class="form-control">
+                            <option value="">🏦 Todas as Contas</option>
+                            {% for acc in accounts %}
+                            <option value="{{ acc.id }}">{{ acc.icon }} {{ acc.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="repTxType">Tipo de Movimentação</label>
+                        <select id="repTxType" class="form-control">
+                            <option value="all">🔄 Todas (Entradas e Saídas)</option>
+                            <option value="income">🟢 Somente Receitas / Entradas</option>
+                            <option value="expense">🔴 Somente Despesas / Saídas</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Category Filter -->
+                <div class="form-group" style="margin-bottom: 0;">
+                    <label for="repCategoryId">Filtrar por Categoria</label>
+                    <select id="repCategoryId" class="form-control">
+                        <option value="">🏷️ Todas as Categorias</option>
+                        {% if categories %}
+                            {% for cat in categories %}
+                            <option value="{{ cat.id }}">{{ cat.icon }} {{ cat.name }} ({{ cat.type }})</option>
+                            {% endfor %}
+                        {% endif %}
+                    </select>
+                </div>
+
+                <!-- Advanced Analytics Options -->
+                <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); padding: 0.85rem 1rem;">
+                    <label style="font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-secondary); display: block; margin-bottom: 0.6rem;">
+                        Opções e Análises Avançadas
+                    </label>
+
+                    <div style="display: flex; flex-direction: column; gap: 0.65rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.88rem; color: #fff;">
+                                <input type="checkbox" id="repTopExpenses" checked style="width: 16px; height: 16px;">
+                                <span>🏆 Ranking dos Maiores Gastos</span>
+                            </label>
+                            <select id="repTopLimit" class="form-control" style="width: 110px; padding: 0.25rem 0.5rem; font-size: 0.8rem;">
+                                <option value="5" selected>Top 5</option>
+                                <option value="10">Top 10</option>
+                            </select>
+                        </div>
+
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.88rem; color: #fff;">
+                            <input type="checkbox" id="repComparison" checked style="width: 16px; height: 16px;">
+                            <span>📈 Análise Comparativa de Período (Mês Anterior / YoY)</span>
+                        </label>
+
+                        <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; font-size: 0.88rem; color: #fff;">
+                            <input type="checkbox" id="repMetrics" checked style="width: 16px; height: 16px;">
+                            <span>📌 Resumo Executivo & Indicadores de Saúde Financeira</span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="padding: 0; margin-top: 0.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeReportExportModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" style="font-weight: 700;">
+                        📥 Baixar Relatório
+                    </button>
+                </div>
+            </form>
+        </div>
     </div>
 
     <!-- Passing server data to Chart.js safely -->
@@ -1034,6 +2437,16 @@
             net_balance: {{ summary.net_balance|tojson }},
             category_breakdown: {{ summary.category_breakdown|tojson }}
         };
+
+        // Mobile sidebar helper
+        function toggleMobileSidebar() {
+            const sidebar = document.getElementById('appSidebar');
+            const backdrop = document.getElementById('sidebarBackdrop');
+            if (sidebar && backdrop) {
+                sidebar.classList.toggle('open');
+                backdrop.classList.toggle('active');
+            }
+        }
 
         // Telegram Web App theme adaptation
         if (window.Telegram && window.Telegram.WebApp) {

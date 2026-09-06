@@ -157,6 +157,49 @@ class FinanceService:
         return new_ws
 
     @staticmethod
+    def find_duplicate_transaction(
+        db: Session,
+        workspace_id: int,
+        type: str,
+        amount: float,
+        description: str,
+        transaction_date: Optional[datetime.datetime] = None,
+        hours_window: int = 24
+    ) -> Optional[Transaction]:
+        """
+        Verifica se já existe uma transação idêntica no workspace
+        (mesmo tipo, mesmo valor e dentro de uma janela de tempo no mesmo dia).
+        """
+        tx_date = transaction_date or datetime.datetime.now()
+        start_time = tx_date - datetime.timedelta(hours=hours_window)
+        end_time = tx_date + datetime.timedelta(hours=hours_window)
+
+        recent_txs = db.query(Transaction).filter(
+            Transaction.workspace_id == workspace_id,
+            Transaction.type == type,
+            Transaction.status == "completed",
+            Transaction.transaction_date >= start_time,
+            Transaction.transaction_date <= end_time
+        ).all()
+
+        clean_desc = description.lower().strip()
+        for tx in recent_txs:
+            if abs(tx.amount - abs(float(amount))) < 0.01:
+                existing_desc = tx.description.lower().strip()
+                if clean_desc == existing_desc:
+                    return tx
+                # Se ambas tiverem termos coincidentes significativos
+                words_new = set(w for w in clean_desc.split() if len(w) > 3)
+                words_existing = set(w for w in existing_desc.split() if len(w) > 3)
+                if words_new and words_existing and (words_new & words_existing):
+                    return tx
+                # Se a transação for no mesmo dia e com valor idêntico
+                if tx_date.date() == tx.transaction_date.date():
+                    return tx
+
+        return None
+
+    @staticmethod
     def add_transaction(
         db: Session,
         workspace_id: int,
@@ -214,7 +257,7 @@ class FinanceService:
             amount=abs(amount),
             description=description.strip(),
             payment_method=acc.name if acc else payment_method,
-            transaction_date=transaction_date or datetime.datetime.utcnow(),
+            transaction_date=transaction_date or datetime.datetime.now(),
             receipt_url=receipt_url,
             status="completed"
         )
@@ -242,7 +285,7 @@ class FinanceService:
     @staticmethod
     def get_monthly_summary(db: Session, workspace_id: int, year: Optional[int] = None, month: Optional[int] = None) -> Dict[str, Any]:
         """Calcula o resumo mensal do workspace (Total Entradas, Saídas, Saldo, Categorias) e metadados de navegação de meses"""
-        now = datetime.datetime.utcnow()
+        now = datetime.datetime.now()
         target_year = int(year) if year else now.year
         target_month = int(month) if month else now.month
 
@@ -276,24 +319,33 @@ class FinanceService:
             reverse=True
         )
 
-        # Cálculo de Saúde Financeira Score (0 a 100)
+        # Cálculo de Saúde Financeira Score (0 a 100) e Taxa de Poupança
         if total_income > 0:
             savings_rate = (net_balance / total_income) * 100
-            if savings_rate >= 20:
-                health_score = 95
+            if savings_rate >= 30:
+                health_score = min(100, int(90 + (savings_rate - 30) * (10 / 70)))
                 health_status = "Excelente 🌟"
-            elif savings_rate > 0:
-                health_score = 75
+            elif savings_rate >= 15:
+                health_score = int(75 + (savings_rate - 15) * (14 / 15))
                 health_status = "Boa 👍"
-            elif savings_rate == 0:
-                health_score = 50
+            elif savings_rate >= 0:
+                health_score = int(55 + (savings_rate / 15) * 19)
                 health_status = "Equilibrada ⚖️"
-            else:
-                health_score = max(10, int(50 + savings_rate))
+            elif savings_rate >= -30:
+                health_score = max(30, int(50 + (savings_rate / 30) * 20))
                 health_status = "Atenção (Déficit) ⚠️"
+            else:
+                health_score = max(10, int(30 + max(-20, (savings_rate + 30) * 0.2)))
+                health_status = "Crítico (Alto Déficit) 🚨"
         else:
-            health_score = 50 if total_expense == 0 else 30
-            health_status = "Sem Receitas Registradas ℹ️"
+            if total_expense > 0:
+                savings_rate = -100.0
+                health_score = 30
+                health_status = "Sem Receitas Registradas ⚠️"
+            else:
+                savings_rate = 0.0
+                health_score = 100
+                health_status = "Sem Movimentações ⚪"
 
         # Cálculo de navegação entre meses e anos
         prev_month = 12 if target_month == 1 else target_month - 1
@@ -370,6 +422,7 @@ class FinanceService:
             "net_balance": net_balance,
             "transaction_count": len(txs),
             "category_breakdown": sorted_categories,
+            "savings_rate": round(savings_rate, 1),
             "health_score": health_score,
             "health_status": health_status,
             "monthly_transactions": txs,

@@ -18,12 +18,14 @@ from app.bot.handlers.commands import (
     veiculo_handler,
     mercado_handler,
     painel_handler,
-    entrar_handler
+    entrar_handler,
+    zerar_handler
 )
 from app.bot.handlers.text_voice_photo import (
     text_message_handler,
     voice_message_handler,
-    photo_message_handler
+    photo_message_handler,
+    document_message_handler
 )
 from app.bot.handlers.callbacks import callback_query_handler
 
@@ -52,11 +54,15 @@ def create_bot_app():
     app.add_handler(CommandHandler("veiculo", veiculo_handler))
     app.add_handler(CommandHandler("mercado", mercado_handler))
     app.add_handler(CommandHandler("painel", painel_handler))
+    app.add_handler(CommandHandler("zerar", zerar_handler))
+    app.add_handler(CommandHandler("zerarconta", zerar_handler))
+    app.add_handler(CommandHandler("limpar", zerar_handler))
 
-    # Handlers Multimodais (Texto, Voz, Foto)
+    # Handlers Multimodais (Texto, Voz, Foto, Documentos)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
     app.add_handler(MessageHandler(filters.VOICE | filters.AUDIO, voice_message_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_message_handler))
+    app.add_handler(MessageHandler(filters.Document.ALL, document_message_handler))
 
     # Callbacks de Botões Inline
     app.add_handler(CallbackQueryHandler(callback_query_handler))

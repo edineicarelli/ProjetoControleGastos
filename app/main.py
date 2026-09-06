@@ -70,6 +70,34 @@ async def lifespan(app: FastAPI):
         await bot_application.shutdown()
     logger.info("Serviços finalizados.")
 
+async def restart_telegram_bot():
+    """Reinicia o bot do Telegram de forma graciosa em tempo de execução"""
+    global bot_application
+    logger.info("Tentando reiniciar o Telegram Bot com novas credenciais...")
+    
+    if bot_application:
+        try:
+            if bot_application.updater and bot_application.updater.running:
+                await bot_application.updater.stop()
+            await bot_application.stop()
+            await bot_application.shutdown()
+        except Exception as e:
+            logger.warning(f"Aviso ao encerrar bot anterior: {e}")
+        bot_application = None
+
+    bot_application = create_bot_app()
+    if bot_application:
+        try:
+            await bot_application.initialize()
+            await bot_application.start()
+            await bot_application.updater.start_polling(drop_pending_updates=True)
+            logger.info("Telegram Bot reiniciado e ouvindo mensagens com sucesso!")
+            return True, "Telegram Bot reiniciado com sucesso!"
+        except Exception as e:
+            logger.error(f"Erro ao iniciar polling do novo Telegram Bot: {e}")
+            return False, f"Falha ao iniciar polling: {str(e)}"
+    return False, "Token não configurado ou padrão."
+
 # Criação da Aplicação FastAPI
 app = FastAPI(
     title="Sistema de Gestão Financeira Inteligente (Telegram + IA)",

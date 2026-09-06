@@ -5,15 +5,20 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+from sqlalchemy.pool import NullPool
+
 # Handle SQLite vs PostgreSQL
 connect_args = {}
+pool_kwargs = {}
 if settings.DATABASE_URL.startswith("sqlite"):
     connect_args = {"check_same_thread": False}
+    pool_kwargs = {"poolclass": NullPool}
 
 engine = create_engine(
     settings.DATABASE_URL,
     connect_args=connect_args,
-    echo=False
+    echo=False,
+    **pool_kwargs
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

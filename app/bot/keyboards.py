@@ -110,12 +110,44 @@ def get_account_detail_keyboard(account: Account) -> InlineKeyboardMarkup:
     """Teclado de controle e ações para uma conta bancária específica"""
     toggle_text = "⏸️ Inativar Conta" if (account.is_active != False) else "▶️ Reativar Conta"
     buttons = [
+        [InlineKeyboardButton("🧹 Zerar Lançamentos Desta Conta (Mês)", callback_data=f"prompt_zero_acc_{account.id}")],
         [InlineKeyboardButton("🔄 Transferir Desta Conta", callback_data=f"transfer_from_{account.id}")],
         [InlineKeyboardButton(toggle_text, callback_data=f"toggle_acc_{account.id}")],
         [InlineKeyboardButton("🗑️ Excluir Conta", callback_data=f"del_acc_{account.id}")],
         [InlineKeyboardButton("🔙 Voltar para Minhas Contas", callback_data="manage_accounts")]
     ]
     return InlineKeyboardMarkup(buttons)
+
+def get_zero_account_confirmation_keyboard(account_id: int) -> InlineKeyboardMarkup:
+    """Confirmação de zeramento de conta"""
+    keyboard = [
+        [InlineKeyboardButton("⚠️ Sim, Zerar Lançamentos do Mês", callback_data=f"confirm_zero_acc_{account_id}")],
+        [InlineKeyboardButton("❌ Cancelar / Voltar", callback_data=f"view_acc_{account_id}")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+def get_zero_selection_keyboard(accounts: List[Account]) -> InlineKeyboardMarkup:
+    """Menu para o usuário escolher qual conta zerar ou se deseja zerar todo o mês"""
+    buttons = []
+    for acc in accounts:
+        btn_text = f"🧹 Zerar {acc.icon} {acc.name} ({format_currency_br(acc.current_balance)})"
+        buttons.append([InlineKeyboardButton(btn_text, callback_data=f"prompt_zero_acc_{acc.id}")])
+
+    buttons.append([
+        InlineKeyboardButton("💥 Zerar TODOS os Gastos do Mês Atual", callback_data="prompt_zero_all_month")
+    ])
+    buttons.append([
+        InlineKeyboardButton("❌ Cancelar", callback_data="close_message")
+    ])
+    return InlineKeyboardMarkup(buttons)
+
+def get_zero_all_month_confirmation_keyboard() -> InlineKeyboardMarkup:
+    """Confirmação para zerar todos os lançamentos do mês"""
+    keyboard = [
+        [InlineKeyboardButton("⚠️ Sim, Zerar TODOS os Gastos do Mês", callback_data="confirm_zero_all_month")],
+        [InlineKeyboardButton("❌ Cancelar / Não Zerar", callback_data="close_message")]
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
 def get_quick_add_accounts_keyboard() -> InlineKeyboardMarkup:
     """Botões de criação rápida de contas mais populares"""
@@ -142,6 +174,38 @@ def get_dashboard_link_keyboard(telegram_id: str) -> InlineKeyboardMarkup:
          InlineKeyboardButton("📄 Exportar PDF (.pdf)", callback_data="export_pdf")]
     ]
     return InlineKeyboardMarkup(keyboard)
+
+def get_reminders_list_keyboard(reminders: list) -> InlineKeyboardMarkup:
+    """Gera botões interativos para cada conta/boleto pendente"""
+    buttons = []
+    for r in reminders:
+        due_str = r.due_date.strftime("%d/%m")
+        btn_text = f"💳 Pagar: {r.title[:15]} ({format_currency_br(r.amount)})"
+        buttons.append([
+            InlineKeyboardButton(btn_text, callback_data=f"pay_reminder_{r.id}")
+        ])
+    buttons.append([
+        InlineKeyboardButton("🔄 Atualizar Agenda", callback_data="refresh_reminders")
+    ])
+    return InlineKeyboardMarkup(buttons)
+
+def get_reminder_pay_account_keyboard(reminder_id: int, accounts: list) -> InlineKeyboardMarkup:
+    """Gera botões com as contas bancárias para escolher de onde debitar o valor"""
+    buttons = []
+    row = []
+    for acc in accounts:
+        btn_text = f"{acc.icon} {acc.name} ({format_currency_br(acc.current_balance)})"
+        row.append(InlineKeyboardButton(btn_text, callback_data=f"pay_confirm_{reminder_id}_{acc.id}"))
+        if len(row) == 1:  # 1 por linha para nomes e saldos ficarem legíveis
+            buttons.append(row)
+            row = []
+    if row:
+        buttons.append(row)
+
+    buttons.append([
+        InlineKeyboardButton("❌ Cancelar / Voltar", callback_data="refresh_reminders")
+    ])
+    return InlineKeyboardMarkup(buttons)
 
 def get_reminder_action_keyboard(reminder_id: int) -> InlineKeyboardMarkup:
     keyboard = [

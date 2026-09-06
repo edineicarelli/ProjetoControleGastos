@@ -21,9 +21,11 @@ finance_control.db
 uploads/audio/*
 uploads/receipts/*
 uploads/exports/*
+uploads/documents/*
 !uploads/audio/.gitkeep
 !uploads/receipts/.gitkeep
 !uploads/exports/.gitkeep
+!uploads/documents/.gitkeep
 
 # IDEs & Editors
 .vscode/

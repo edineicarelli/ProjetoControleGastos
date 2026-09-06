@@ -32,7 +32,7 @@ class AccountService:
 
     @staticmethod
     def get_accounts(db: Session, workspace_id: int, active_only: bool = False) -> List[Account]:
-        """Retorna as contas do workspace, criando as padrões se vazio"""
+        """Retorna as contas do workspace, criando as padrões se vazio e mantendo integridade dos saldos"""
         query = db.query(Account).filter(Account.workspace_id == workspace_id)
         if active_only:
             query = query.filter(Account.is_active == True)
@@ -40,6 +40,14 @@ class AccountService:
         if not accounts and not active_only:
             AccountService.seed_default_accounts(db, workspace_id)
             accounts = db.query(Account).filter(Account.workspace_id == workspace_id).order_by(Account.id.asc()).all()
+
+        # Garante a integridade exata do saldo atual (Saldo Inicial + Entradas - Saídas)
+        for acc in accounts:
+            income_total = sum(t.amount for t in acc.transactions if t.type == "income")
+            expense_total = sum(t.amount for t in acc.transactions if t.type == "expense")
+            acc.current_balance = round((acc.initial_balance or 0.0) + income_total - expense_total, 2)
+        db.commit()
+
         return accounts
 
     @staticmethod
@@ -330,4 +338,95 @@ class AccountService:
             expense_total = sum(t.amount for t in acc.transactions if t.type == "expense")
             acc.current_balance = (acc.initial_balance or 0.0) + income_total - expense_total
         db.commit()
+
+    @staticmethod
+    def zero_account(
+        db: Session,
+        workspace_id: int,
+        account_id: int,
+        year: Optional[int] = None,
+        month: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Zera o saldo e as movimentações de uma conta bancária específica no mês selecionado"""
+        from sqlalchemy import extract
+        acc = db.query(Account).filter(Account.id == account_id, Account.workspace_id == workspace_id).first()
+        if not acc:
+            return {"success": False, "message": "Conta não encontrada."}
+
+        now = datetime.datetime.utcnow()
+        target_year = year or now.year
+        target_month = month or now.month
+
+        # Busca e exclui transações vinculadas a esta conta no mês selecionado
+        tx_query = db.query(Transaction).filter(
+            Transaction.workspace_id == workspace_id,
+            Transaction.account_id == acc.id,
+            extract("year", Transaction.transaction_date) == target_year,
+            extract("month", Transaction.transaction_date) == target_month
+        )
+        deleted_count = tx_query.count()
+        tx_query.delete(synchronize_session=False)
+
+        # Recalcula saldo da conta
+        income_total = sum(t.amount for t in acc.transactions if t.type == "income")
+        expense_total = sum(t.amount for t in acc.transactions if t.type == "expense")
+        acc.current_balance = (acc.initial_balance or 0.0) + income_total - expense_total
+
+        db.commit()
+        db.refresh(acc)
+
+        try:
+            from app.services.event_bus import event_bus
+            event_bus.notify_workspace_update(workspace_id)
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "account": acc,
+            "deleted_count": deleted_count,
+            "year": target_year,
+            "month": target_month,
+            "message": f"Conta {acc.icon} {acc.name} zerada com sucesso em {target_month:02d}/{target_year}! ({deleted_count} lançamentos removidos)"
+        }
+
+    @staticmethod
+    def zero_monthly_transactions(
+        db: Session,
+        workspace_id: int,
+        year: Optional[int] = None,
+        month: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Zera todos os lançamentos financeiros do mês selecionado em todo o workspace"""
+        from sqlalchemy import extract
+        now = datetime.datetime.utcnow()
+        target_year = year or now.year
+        target_month = month or now.month
+
+        tx_query = db.query(Transaction).filter(
+            Transaction.workspace_id == workspace_id,
+            extract("year", Transaction.transaction_date) == target_year,
+            extract("month", Transaction.transaction_date) == target_month
+        )
+        deleted_count = tx_query.count()
+        tx_query.delete(synchronize_session=False)
+
+        # Recalcula os saldos de todas as contas
+        AccountService.recalculate_account_balances(db, workspace_id)
+
+        db.commit()
+
+        try:
+            from app.services.event_bus import event_bus
+            event_bus.notify_workspace_update(workspace_id)
+        except Exception:
+            pass
+
+        return {
+            "success": True,
+            "deleted_count": deleted_count,
+            "year": target_year,
+            "month": target_month,
+            "message": f"Todos os lançamentos de {target_month:02d}/{target_year} foram zerados com sucesso! ({deleted_count} registros excluídos)"
+        }
 
