@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . /app
 
 # Cria diretórios persistentes para banco e uploads
-RUN mkdir -p /app/data /app/uploads/audio /app/uploads/receipts /app/uploads/exports
+RUN mkdir -p /app/data /app/uploads/audio /app/uploads/receipts /app/uploads/exports /app/uploads/documents
 
 # Expõe porta do Dashboard Web
 EXPOSE 8000
