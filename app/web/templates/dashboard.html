@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/static/css/style.css?v=2.0">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.8">
     <style>
 /* ==========================================================================
    Controle Financeiro Inteligente - Clean SaaS Design System
@@ -1090,6 +1090,14 @@ body {
                                 </span>
                             </button>
                         </li>
+                        <li class="nav-item">
+                            <button class="tab-btn" data-tab="tab-items-analytics">
+                                <span class="nav-link-content">
+                                    <span class="nav-icon">🛍️</span>
+                                    <span>Análise de Itens & Mercado</span>
+                                </span>
+                            </button>
+                        </li>
                     </ul>
                 </div>
 
@@ -1165,11 +1173,15 @@ body {
                 </div>
 
                 <!-- Topbar Actions (Right) -->
-                <div class="topbar-right">
-                    <button class="btn btn-primary btn-sm" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                <div class="topbar-right" style="display: flex; gap: 0.5rem; align-items: center;">
+                    <button class="btn btn-primary btn-sm" onclick="openTransactionModal()" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; background: linear-gradient(135deg, #6366f1, #8b5cf6); box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);">
+                        ➕ <span>Novo Gasto / Comprovante</span>
+                    </button>
+                    <button class="btn btn-secondary btn-sm" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;">
                         🔄 <span>Transferência</span>
                     </button>
                 </div>
+
             </header>
 
             <!-- Main Content Area -->
@@ -1426,11 +1438,15 @@ body {
                             </div>
 
                             <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+                                <button class="btn btn-primary btn-sm" onclick="openTransactionModal()" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+                                    ➕ <span>Novo Gasto / Comprovante</span>
+                                </button>
+
                                 <button class="btn btn-secondary btn-sm" onclick="confirmZeroMonth({{ current_workspace.id }}, '{{ summary.month_year_label }}', {{ selected_year or 'null' }}, {{ selected_month or 'null' }})" style="color: #fbbf24; border-color: rgba(245, 158, 11, 0.35);" title="Zerar todos os lançamentos deste mês">
                                     🧹 <span>Zerar Mês</span>
                                 </button>
 
-                                <button class="btn btn-primary btn-sm" onclick="openTransferModal()">
+                                <button class="btn btn-secondary btn-sm" onclick="openTransferModal()">
                                     🔄 <span>Transferência</span>
                                 </button>
 
@@ -1480,7 +1496,15 @@ body {
                                                     <span style="color: var(--expense); font-weight: 600;">- Saída</span>
                                                 {% endif %}
                                             </td>
-                                            <td style="font-weight: 500;" class="tx-desc">{{ tx.description }}</td>
+                                            <td style="font-weight: 500;" class="tx-desc">
+                                                <span>{{ tx.description }}</span>
+                                                {% if tx.has_items or (tx.items and tx.items|length > 0) or (tx.items_count and tx.items_count > 0) %}
+                                                <button type="button" class="badge-items" onclick="event.stopPropagation(); openTransactionItemsModal({{ tx.id }})" title="Ver itens discriminados desta compra">
+                                                    🛒 {{ tx.items_count or tx.items|length }} itens
+                                                </button>
+                                                {% endif %}
+                                            </td>
+
                                             <td>
                                                 <span class="category-tag">
                                                     {{ tx.category.icon if tx.category else '🏷️' }} {{ tx.category.name if tx.category else 'Outros' }}
@@ -1493,6 +1517,7 @@ body {
                                                     {{ tx.payment_method }}
                                                 {% endif %}
                                             </td>
+
                                             <td style="text-align: right; font-weight: 700;" class="{% if tx.type == 'income' %}text-income{% else %}text-expense{% endif %}">
                                                 {{ tx.amount | currency_br }}
                                             </td>
@@ -1656,40 +1681,281 @@ body {
                     </div>
                 </section>
 
-                <!-- TAB 7: LISTA DE MERCADO -->
+                <!-- TAB 7: LISTA DE MERCADO COM ESTIMATIVA INTELIGENTE -->
                 <section id="tab-shopping" class="tab-content">
-                    <div class="glass-card">
-                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem;">
-                            <h2 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">🛒 {{ shopping_list.title }}</h2>
-                            <span style="color: var(--text-secondary); font-size: 0.9rem;">Total Estimado: <b>{{ shopping_list.total_estimated | currency_br }}</b></span>
+                    <div class="glass-card" style="margin-bottom: 1.25rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                            <div>
+                                <h2 style="font-size: 1.2rem; font-weight: 700; color: #fff; margin: 0; display: flex; align-items: center; gap: 0.5rem;">
+                                    <span>🛒</span> <span>{{ shopping_list.title }}</span>
+                                </h2>
+                                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.2rem;">
+                                    Planeje sua ida ao supermercado sabendo previamente o valor estimado com base no histórico das suas últimas compras.
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap;">
+                                <div class="badge" style="background: rgba(99, 102, 241, 0.15); border: 1px solid rgba(99, 102, 241, 0.35); padding: 0.45rem 0.85rem; font-size: 0.9rem; color: #a5b4fc;">
+                                    Total Estimado: <strong id="shoppingTotalEstimated" style="color: #fff; font-size: 1.05rem;">{{ shopping_list.total_estimated | currency_br }}</strong>
+                                </div>
+                                <div class="badge" style="background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.35); padding: 0.45rem 0.85rem; font-size: 0.9rem; color: #34d399;">
+                                    No Carrinho: <strong id="shoppingTotalBought" style="color: #34d399; font-size: 1.05rem;">{{ shopping_list.total_bought | currency_br }}</strong>
+                                </div>
+                            </div>
                         </div>
 
-                        {% if shopping_list.items %}
-                            <div style="display: flex; flex-direction: column; gap: 0.5rem;">
-                                {% for item in shopping_list.items %}
-                                <div class="overview-item {% if item.is_checked %}checked{% endif %}" style="padding: 0.75rem 1rem;">
-                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                        <input type="checkbox" {% if item.is_checked %}checked{% endif %} onchange="toggleItemFromWeb({{ item.id }})" style="cursor: pointer; width: 18px; height: 18px;">
-                                        <span style="{% if item.is_checked %}text-decoration: line-through; opacity: 0.6;{% endif %}">{{ item.name }} ({{ item.quantity|int }} {{ item.unit }})</span>
-                                    </div>
-                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                        <span style="color: var(--text-secondary);">
-                                            {% if item.estimated_price > 0 %}{{ item.estimated_price | currency_br }}{% endif %}
-                                        </span>
-                                        <button class="btn-icon-danger" title="Excluir item" onclick="deleteShoppingItem({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')">
-                                            🗑️
-                                        </button>
-                                    </div>
+                        <!-- Formulário Rápido de Adição com Auto-Estimativa de Preço -->
+                        <div style="margin-top: 1.25rem; background: rgba(15, 23, 42, 0.6); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                            <form id="formAddShoppingItem" onsubmit="handleAddShoppingItem(event)" style="display: grid; grid-template-columns: 2fr 0.8fr 0.8fr 1.2fr auto; gap: 0.75rem; align-items: end;">
+                                <div>
+                                    <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Nome do Produto (Ex: Leite Tirol, Tomate, Pão)</label>
+                                    <input type="text" id="shopItemName" class="form-control" placeholder="Digite o produto..." required oninput="debounceLookupPrice(this.value)" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;">
+                                    <div id="shopLastPriceHint" style="font-size: 0.74rem; color: #38bdf8; margin-top: 0.3rem; min-height: 16px; display: none;"></div>
                                 </div>
-                                {% endfor %}
+                                <div>
+                                    <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Qtd</label>
+                                    <input type="number" id="shopItemQty" class="form-control" value="1" min="0.1" step="any" required style="padding: 0.45rem 0.65rem; font-size: 0.85rem;">
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Unidade</label>
+                                    <select id="shopItemUnit" class="form-control" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;">
+                                        <option value="un">un</option>
+                                        <option value="kg">kg</option>
+                                        <option value="pct">pct</option>
+                                        <option value="cx">cx</option>
+                                        <option value="l">l</option>
+                                        <option value="g">g</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="font-size: 0.75rem; color: var(--text-muted); display: block; margin-bottom: 0.3rem;">Preço Unit. Estimado (R$)</label>
+                                    <input type="number" id="shopItemPrice" class="form-control" placeholder="0,00" step="0.01" style="padding: 0.45rem 0.65rem; font-size: 0.85rem;">
+                                </div>
+                                <div>
+                                    <button type="submit" class="btn btn-primary" style="padding: 0.5rem 1rem; font-size: 0.85rem; height: 38px; display: flex; align-items: center; gap: 0.3rem;">
+                                        ➕ Adicionar
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <div class="glass-card">
+                        <div id="shoppingListContainer">
+                            {% if shopping_list.items %}
+                                <div style="display: flex; flex-direction: column; gap: 0.5rem;">
+                                    {% for item in shopping_list.items %}
+                                    <div class="overview-item {% if item.is_checked %}checked{% endif %}" id="shopItemRow_{{ item.id }}" style="padding: 0.75rem 1rem; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+                                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                            <input type="checkbox" {% if item.is_checked %}checked{% endif %} onchange="toggleItemFromWeb({{ item.id }})" style="cursor: pointer; width: 18px; height: 18px; accent-color: #10b981;">
+                                            <div>
+                                                <span style="font-weight: 600; color: #fff; {% if item.is_checked %}text-decoration: line-through; opacity: 0.5;{% endif %}">{{ item.name }}</span>
+                                                <small style="color: var(--text-muted); display: block;">{{ item.quantity|number_br }} {{ item.unit }}</small>
+                                            </div>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 1rem;">
+                                            <div style="text-align: right;">
+                                                <strong style="color: {% if item.is_checked %}#34d399{% else %}var(--text-primary){% endif %}; font-size: 0.95rem;">
+                                                    {% if item.estimated_price > 0 %}
+                                                        {{ (item.estimated_price * item.quantity) | currency_br }}
+                                                    {% else %}
+                                                        <span style="color: var(--text-muted); font-size: 0.8rem;">(sem estimativa)</span>
+                                                    {% endif %}
+                                                </strong>
+                                                {% if item.estimated_price > 0 and item.quantity > 1 %}
+                                                    <small style="color: var(--text-muted); display: block; font-size: 0.72rem;">{{ item.estimated_price | currency_br }} / {{ item.unit }}</small>
+                                                {% endif %}
+                                            </div>
+                                            <button class="btn-icon-danger" title="Excluir item" onclick="deleteShoppingItem({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')">
+                                                🗑️
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            {% else %}
+                                <div style="text-align: center; color: var(--text-muted); padding: 3rem 1rem;">
+                                    <div style="font-size: 2rem; margin-bottom: 0.5rem;">🛒</div>
+                                    <p style="color: #fff; font-weight: 600; margin-bottom: 0.25rem;">Lista de compras vazia.</p>
+                                    <p style="font-size: 0.85rem;">Adicione produtos acima ou envie mensagens como <i>"comprar 2 leites"</i> no Telegram!</p>
+                                </div>
+                            {% endif %}
+                        </div>
+                    </div>
+                </section>
+
+                <!-- TAB 8: ANÁLISE DE MERCADO, RANKINGS & COMPARADOR DE PREÇOS -->
+                <section id="tab-items-analytics" class="tab-content">
+                    <div class="glass-card" style="margin-bottom: 1.25rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
+                            <div>
+                                <h2 style="font-size: 1.25rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
+                                    <span>🛍️</span> <span>Inteligência de Mercado & Comparador de Preços</span>
+                                </h2>
+                                <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.2rem;">
+                                    Descubra o ranking dos produtos mais consumidos, onde você mais gasta e compare preços entre diferentes supermercados.
+                                </p>
                             </div>
-                        {% else %}
-                            <div style="text-align: center; color: var(--text-muted); padding: 3rem 1rem;">
-                                <div style="font-size: 2rem; margin-bottom: 0.5rem;">🛒</div>
-                                <p style="color: #fff; font-weight: 600; margin-bottom: 0.25rem;">Lista de compras vazia.</p>
-                                <p style="font-size: 0.85rem;">Adicione itens via Telegram enviando mensagens ou fotos da sua lista.</p>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-secondary btn-sm" onclick="loadMarketAnalyticsData()" style="display: inline-flex; align-items: center; gap: 0.3rem;">
+                                    🔄 Atualizar Dados
+                                </button>
+                                <button class="btn btn-primary btn-sm" onclick="openTransactionModal()" style="display: inline-flex; align-items: center; gap: 0.4rem;">
+                                    ➕ <span>Novo Cupom / Gasto</span>
+                                </button>
                             </div>
-                        {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- KPIs de Itens & Mercado -->
+                    <div class="metrics-grid" style="margin-bottom: 1.5rem;">
+                        <div class="glass-card metric-card">
+                            <div class="metric-icon-wrap">🛒</div>
+                            <div class="metric-content">
+                                <span class="metric-label">Produtos Registrados</span>
+                                <span class="metric-value" id="analyticsTotalItems">0</span>
+                                <div class="metric-footer">
+                                    <span class="status-badge active">No período selecionado</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-card metric-card expense">
+                            <div class="metric-icon-wrap">💸</div>
+                            <div class="metric-content">
+                                <span class="metric-label">Total Gasto em Mercado</span>
+                                <span class="metric-value text-expense" id="analyticsTotalSpent">R$ 0,00</span>
+                                <div class="metric-footer">
+                                    <span class="status-badge" style="background: var(--expense-bg); color: #fb7185;">Soma de produtos</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-card metric-card">
+                            <div class="metric-icon-wrap">🏪</div>
+                            <div class="metric-content">
+                                <span class="metric-label">Supermercados Visitados</span>
+                                <span class="metric-value" id="analyticsTotalStores">0</span>
+                                <div class="metric-footer">
+                                    <span class="status-badge" style="background: var(--primary-bg); color: var(--primary-light);">Estabelecimentos</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="glass-card metric-card health">
+                            <div class="metric-icon-wrap">🏷️</div>
+                            <div class="metric-content">
+                                <span class="metric-label">Categorias de Itens</span>
+                                <span class="metric-value" id="analyticsTotalCategories">0</span>
+                                <div class="metric-footer">
+                                    <span class="status-badge" style="background: var(--info-bg); color: #38bdf8;">Mercearia, Carnes, etc.</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rankings Grid (Top Produtos + Top Mercados + Categorias) -->
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
+                        <!-- Top Produtos Mais Consumidos com Alternador -->
+                        <div class="glass-card" style="display: flex; flex-direction: column;">
+                            <div class="chart-header" style="margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <h3 class="chart-title" style="margin: 0; font-size: 1.05rem;">🏆 Produtos Mais Consumidos</h3>
+                                <div class="btn-group" style="display: inline-flex; background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); padding: 2px;">
+                                    <button type="button" id="btnSortSpent" class="btn btn-xs active" onclick="switchItemRankingSort('spent')" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 4px;">Por Gasto (R$)</button>
+                                    <button type="button" id="btnSortQty" class="btn btn-xs" onclick="switchItemRankingSort('quantity')" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 4px;">Por Volume</button>
+                                </div>
+                            </div>
+                            <div id="topSpentList" class="ranking-card" style="flex: 1;">
+                                <div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Carregando dados...</div>
+                            </div>
+                        </div>
+
+                        <!-- Ranking de Supermercados onde mais gasta -->
+                        <div class="glass-card" style="display: flex; flex-direction: column;">
+                            <div class="chart-header" style="margin-bottom: 0.75rem;">
+                                <h3 class="chart-title" style="margin: 0; font-size: 1.05rem;">🏪 Onde Você Mais Gasta (Mercados)</h3>
+                            </div>
+                            <div id="topStoresList" class="ranking-card" style="flex: 1;">
+                                <div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Carregando dados...</div>
+                            </div>
+                        </div>
+
+                        <!-- Gastos por Categoria de Produto -->
+                        <div class="glass-card" style="display: flex; flex-direction: column;">
+                            <div class="chart-header" style="margin-bottom: 0.75rem;">
+                                <h3 class="chart-title" style="margin: 0; font-size: 1.05rem;">🍕 Gastos por Categoria</h3>
+                            </div>
+                            <div id="topCategoriesList" class="ranking-card" style="flex: 1;">
+                                <div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Carregando dados...</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- NOVO: COMPARADOR DE PREÇOS ENTRE SUPERMERCADOS -->
+                    <div class="glass-card" style="margin-bottom: 1.5rem; border: 1px solid rgba(99, 102, 241, 0.3);">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
+                            <div>
+                                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                    <span style="font-size: 1.25rem;">🔍</span>
+                                    <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">Comparador de Preços entre Supermercados</h3>
+                                    <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.75rem; border: 1px solid rgba(16, 185, 129, 0.3);">Inteligente</span>
+                                </div>
+                                <small style="color: var(--text-secondary); display: block; margin-top: 0.2rem;">
+                                    Compare o preço unitário do mesmo produto entre os estabelecimentos onde você já comprou para economizar.
+                                </small>
+                            </div>
+                            <input type="text" id="priceCompareSearchInput" onkeyup="filterPriceComparisonTable(this.value)" placeholder="🔍 Filtrar produto (ex: Leite, Tomate, Pão)..." class="form-control" style="max-width: 300px; padding: 0.45rem 0.8rem; font-size: 0.84rem;">
+                        </div>
+
+                        <div class="table-container" style="max-height: 420px; overflow-y: auto;">
+                            <table class="custom-table" id="priceComparisonTable" style="font-size: 0.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Produto / Item</th>
+                                        <th>Categoria</th>
+                                        <th style="color: #34d399;">🟢 Menor Preço (Mais Barato)</th>
+                                        <th style="color: #fb7185;">🔴 Maior Preço (Mais Caro)</th>
+                                        <th style="text-align: center;">Diferença / Variação</th>
+                                        <th>Histórico por Mercado</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="priceComparisonTableBody">
+                                    <tr>
+                                        <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">Carregando comparador de preços...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Tabela de Histórico de Itens Comprados com Busca -->
+                    <div class="glass-card">
+                        <div class="table-toolbar" style="margin-bottom: 1rem;">
+                            <div>
+                                <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff; margin: 0;">📜 Histórico Completo de Compras Item a Item</h3>
+                                <small style="color: var(--text-muted);">Consulte todos os produtos discriminados em cupons e notas fiscais</small>
+                            </div>
+                            <input type="text" id="itemsSearchInput" onkeyup="filterItemsHistoryTable(this.value)" placeholder="🔍 Buscar produto (ex: arroz, carne, leite)..." class="form-control" style="max-width: 280px; padding: 0.4rem 0.75rem; font-size: 0.82rem;">
+                        </div>
+                        <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+                            <table class="custom-table" id="itemsHistoryTable" style="font-size: 0.85rem;">
+                                <thead>
+                                    <tr>
+                                        <th>Data</th>
+                                        <th>Estabelecimento / Compra</th>
+                                        <th>Produto / Item</th>
+                                        <th>Categoria</th>
+                                        <th style="text-align: center;">Qtd</th>
+                                        <th style="text-align: right;">Preço Unit.</th>
+                                        <th style="text-align: right;">Total Item</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="itemsHistoryTableBody">
+                                    <tr>
+                                        <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">Carregando histórico...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </section>
 
@@ -1697,8 +1963,222 @@ body {
         </div>
     </div>
 
+    <!-- MODAL: Novo Lançamento & Leitura de Comprovante -->
+    <div id="transactionModal" class="modal-backdrop" style="display: none;" onclick="if(event.target === this) closeTransactionModal()">
+
+        <div class="modal-card" style="max-width: 780px; max-height: 90vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <h3 class="modal-title" id="transactionModalTitle">💸 Novo Lançamento / 📄 Ler Comprovante</h3>
+                <button type="button" class="modal-close" onclick="closeTransactionModal()">&times;</button>
+            </div>
+
+            <form id="transactionForm" onsubmit="saveTransactionForm(event)" style="display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; padding: 1.25rem;">
+                <input type="hidden" id="txWorkspaceId" value="{{ current_workspace.id }}">
+                <input type="hidden" id="txUserId" value="{{ user.id if user else 1 }}">
+                <input type="hidden" id="txReceiptUrl" value="">
+
+                <!-- Dropzone de Arquivo (PDF, JPG, PNG, WebP) -->
+                <div class="upload-dropzone" id="receiptDropzone" onclick="document.getElementById('receiptFileInput').click()" ondragover="handleDragOver(event)" ondragleave="handleDragLeave(event)" ondrop="handleDropFile(event)">
+                    <input type="file" id="receiptFileInput" accept=".pdf, .jpg, .jpeg, .png, .webp, image/*, application/pdf" style="display: none;" onchange="handleFileSelected(event)">
+                    <div class="upload-dropzone-icon">📄</div>
+                    <div class="upload-dropzone-title">Arraste ou clique para carregar Cupom Fiscal, Comprovante Pix, Fatura ou PDF</div>
+                    <div class="upload-dropzone-subtitle">Formatos suportados: PDF, JPG, PNG, WebP • A IA extrai valores e itens de mercado automaticamente</div>
+                    
+                    <div class="upload-dropzone-loader" id="uploadLoader">
+                        <div class="spinner"></div>
+                        <span>🤖 IA lendo comprovante e extraindo dados item a item...</span>
+                    </div>
+
+                    <div id="receiptPreviewPill" class="receipt-preview-pill" style="display: none;">
+                        <span>📎</span> <span id="receiptFileName">arquivo.pdf</span>
+                        <button type="button" onclick="clearUploadedReceipt(event)" style="background: none; border: none; color: #f43f5e; cursor: pointer; font-weight: bold; margin-left: 0.25rem;">✕</button>
+                    </div>
+                </div>
+
+                <!-- Dados Principais da Transação -->
+                <div class="form-row" style="display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 0.75rem;">
+                    <div class="form-group">
+                        <label for="txType">Tipo *</label>
+                        <select id="txType" class="form-control" required>
+                            <option value="expense">🔴 Despesa (Saída)</option>
+                            <option value="income">🟢 Receita (Entrada)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="txAmount">Valor Total (R$) *</label>
+                        <input type="number" step="0.01" min="0.01" id="txAmount" class="form-control" placeholder="0,00" style="font-weight: 700; font-size: 1.05rem;" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="txDate">Data *</label>
+                        <input type="date" id="txDate" class="form-control" required>
+                    </div>
+                </div>
+
+                <div class="form-row" style="display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 0.75rem;">
+                    <div class="form-group">
+                        <label for="txDescription">Descrição / Estabelecimento *</label>
+                        <input type="text" id="txDescription" class="form-control" placeholder="Ex: Supermercado Pão de Açúcar" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="txCategory">Categoria</label>
+                        <input type="text" id="txCategory" list="categorySuggestions" class="form-control" placeholder="Ex: Supermercado">
+                        <datalist id="categorySuggestions">
+                            <option value="Supermercado">
+                            <option value="Alimentação">
+                            <option value="Saúde & Farmácia">
+                            <option value="Transporte & Combustível">
+                            <option value="Moradia & Contas">
+                            <option value="Lazer & Viagens">
+                            <option value="Educação">
+                            <option value="Salário">
+                            <option value="Freelas & Extras">
+                            <option value="Outros">
+                        </datalist>
+                    </div>
+                    <div class="form-group">
+                        <label for="txAccount">Conta Bancária / Carteira</label>
+                        <select id="txAccount" class="form-control">
+                            <option value="">Nenhuma (Forma Genérica)</option>
+                            {% for acc in accounts %}
+                            {% if acc.is_active != False %}
+                            <option value="{{ acc.id }}">{{ acc.icon }} {{ acc.name }}</option>
+                            {% endif %}
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Detalhamento Item a Item -->
+                <div style="border-top: 1px solid var(--border-subtle); padding-top: 0.75rem;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                        <div>
+                            <strong style="font-size: 0.92rem; color: #fff; display: flex; align-items: center; gap: 0.35rem;">
+                                <span>🛒</span> <span>Detalhamento dos Produtos / Itens Comprados</span>
+                            </strong>
+                            <small style="color: var(--text-secondary); font-size: 0.78rem;">Permite analisar o que foi comprado com esse valor pago</small>
+                        </div>
+                    </div>
+
+                    <!-- Seletor de Modo: Item a Item vs Somente Total -->
+                    <div class="mode-switch-group">
+                        <button type="button" id="btnModeItems" class="mode-switch-btn active" onclick="setItemsMode(true)">
+                            <span>🛒</span> <span>Incluir Itens Item a Item</span>
+                        </button>
+                        <button type="button" id="btnModeTotalOnly" class="mode-switch-btn" onclick="setItemsMode(false)">
+                            <span>💰</span> <span>Incluir Somente Valor Total</span>
+                        </button>
+                    </div>
+
+                    <!-- Seção da Tabela de Itens (visível quando modo Item a Item está ativo) -->
+                    <div id="itemsEditorContainer">
+                        <div class="items-table-container">
+                            <table class="items-table-edit">
+                                <thead>
+                                    <tr>
+                                        <th style="min-width: 170px;">Produto / Item</th>
+                                        <th style="width: 70px;">Qtd</th>
+                                        <th style="width: 65px;">Un</th>
+                                        <th style="width: 90px;">Preço Unit.</th>
+                                        <th style="width: 95px;">Total Item</th>
+                                        <th style="width: 120px;">Categoria Item</th>
+                                        <th style="width: 38px; text-align: center;">✕</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="txItemsTableBody">
+                                    <!-- Linhas de itens inseridas dinamicamente -->
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem; flex-wrap: wrap; gap: 0.5rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="addNewEmptyItemRow()" style="font-size: 0.8rem;">
+                                ➕ Adicionar Produto Manualmente
+                            </button>
+                            <div class="items-summary-bar" id="itemsSummaryBar" style="margin-top: 0; padding: 0.4rem 0.75rem;">
+                                <span id="itemsSumLabel">Soma dos Itens: <b>R$ 0,00</b> (<span id="itemsCountLabel">0</span> produtos)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="modal-footer" style="padding: 0.75rem 0 0; margin-top: 0.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeTransactionModal()">Cancelar</button>
+                    <button type="submit" id="btnSaveTx" class="btn btn-primary" style="font-weight: 700;">
+                        💾 Salvar Lançamento
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Detalhes e Itens de um Lançamento -->
+    <div id="transactionItemsModal" class="modal-backdrop" onclick="if(event.target === this) closeTransactionItemsModal()">
+
+        <div class="modal-card" style="max-width: 720px; max-height: 85vh; display: flex; flex-direction: column;">
+            <div class="modal-header">
+                <div>
+                    <h3 class="modal-title" id="txItemsModalTitle">🛒 Detalhamento da Compra</h3>
+                    <small id="txItemsModalSubtitle" style="color: var(--text-secondary);"></small>
+                </div>
+                <button type="button" class="modal-close" onclick="closeTransactionItemsModal()">&times;</button>
+            </div>
+
+            <div class="modal-body" style="display: flex; flex-direction: column; gap: 1rem; overflow-y: auto; padding: 1.25rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; background: rgba(255, 255, 255, 0.03); padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); flex-wrap: wrap; gap: 0.5rem;">
+                    <div>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); display: block;">Valor Total Pago</span>
+                        <strong id="txItemsModalAmount" style="font-size: 1.2rem; color: var(--text-primary);">R$ 0,00</strong>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); display: block;">Categoria</span>
+                        <span id="txItemsModalCategory" class="category-tag">Supermercado</span>
+                    </div>
+                    <div>
+                        <span style="font-size: 0.8rem; color: var(--text-muted); display: block;">Data</span>
+                        <span id="txItemsModalDate" style="font-weight: 600;">01/01/2026</span>
+                    </div>
+                </div>
+
+                <div class="items-table-container" style="max-height: 320px; overflow-y: auto; flex-shrink: 0; background: #0f172a; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.1);">
+                    <table class="items-table-edit" style="width: 100%; border-collapse: collapse; font-size: 0.84rem;">
+                        <thead>
+                            <tr>
+                                <th style="padding: 0.65rem 0.75rem; background: #1e293b; color: var(--text-muted); font-size: 0.75rem; font-weight: 700; position: sticky; top: 0; z-index: 2;">Produto / Item</th>
+                                <th style="padding: 0.65rem 0.75rem; background: #1e293b; color: var(--text-muted); font-size: 0.75rem; font-weight: 700; position: sticky; top: 0; z-index: 2;">Categoria</th>
+                                <th style="padding: 0.65rem 0.75rem; background: #1e293b; color: var(--text-muted); font-size: 0.75rem; font-weight: 700; position: sticky; top: 0; z-index: 2; text-align: center;">Qtd</th>
+                                <th style="padding: 0.65rem 0.75rem; background: #1e293b; color: var(--text-muted); font-size: 0.75rem; font-weight: 700; position: sticky; top: 0; z-index: 2; text-align: right;">Preço Unit.</th>
+                                <th style="padding: 0.65rem 0.75rem; background: #1e293b; color: var(--text-muted); font-size: 0.75rem; font-weight: 700; position: sticky; top: 0; z-index: 2; text-align: right;">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody id="txItemsViewTableBody">
+                            <!-- Linhas de visualização -->
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="items-summary-bar" style="background: #1e1b4b; border: 1px solid rgba(99, 102, 241, 0.4); padding: 0.75rem 1rem; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; margin-top: 0.75rem; flex-shrink: 0; position: relative; z-index: 5;">
+                    <span id="txItemsViewCount" style="color: #cbd5e1; font-weight: 600; display: inline-flex; align-items: center; gap: 0.4rem;">
+                        📦 Total de produtos: 0
+                    </span>
+                    <span id="txItemsViewTotal" style="font-size: 1.05rem; font-weight: 700; color: #34d399;">
+                        Soma dos Itens: R$ 0,00
+                    </span>
+                </div>
+            </div>
+
+            <div class="modal-footer" style="display: flex; justify-content: space-between; align-items: center;">
+                <button type="button" class="btn btn-secondary btn-sm" id="btnDeleteItemsKeepTotal" onclick="confirmDeleteItemsKeepTotal()" style="color: #fb7185; border-color: rgba(244, 63, 94, 0.35);">
+                    💰 Manter Apenas Valor Total (Remover Itens)
+                </button>
+                <button type="button" class="btn btn-primary btn-sm" onclick="closeTransactionItemsModal()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: Transferência Entre Contas -->
     <div id="transferModal" class="modal-backdrop" onclick="if(event.target === this) closeTransferModal()">
+
         <div class="modal-content" style="max-width: 520px;">
             <div class="modal-header">
                 <h3>🔄 Transferência Entre Contas</h3>
@@ -2431,6 +2911,8 @@ body {
     <!-- Passing server data to Chart.js safely -->
     <script>
         window.currentWorkspaceId = {{ current_workspace.id }};
+        window.selectedYear = {{ summary.year }};
+        window.selectedMonth = {{ summary.month }};
         window.dashboardData = {
             total_income: {{ summary.total_income|tojson }},
             total_expense: {{ summary.total_expense|tojson }},
@@ -2453,7 +2935,61 @@ body {
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand();
         }
+
+        // Direct Item Modal helper guarantee
+        window.openTransactionItemsModal = window.openTransactionItemsModal || async function(transactionId) {
+            const modal = document.getElementById('transactionItemsModal');
+            if (!modal) return;
+            modal.style.display = 'flex';
+            modal.classList.add('show', 'active');
+            document.body.style.overflow = 'hidden';
+            
+            const tbody = document.getElementById('txItemsViewTableBody');
+            if (tbody) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">Carregando itens...</td></tr>';
+            }
+            try {
+                const res = await fetch(`/api/transactions/${transactionId}/items`);
+                const data = await res.json();
+                document.getElementById('txItemsModalTitle').textContent = `🛒 ${data.description || 'Itens da Compra'}`;
+                document.getElementById('txItemsModalSubtitle').textContent = `Lançamento #${data.transaction_id} • ${data.date}`;
+                document.getElementById('txItemsModalAmount').textContent = Number(data.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+                document.getElementById('txItemsModalCategory').textContent = data.category || 'Geral';
+                document.getElementById('txItemsModalDate').textContent = data.date;
+                
+                if (tbody) {
+                    if (!data.items || data.items.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">Nenhum item discriminado.</td></tr>';
+                    } else {
+                        tbody.innerHTML = data.items.map(it => `
+                            <tr>
+                                <td style="font-weight: 600; color: #fff;">${it.name}</td>
+                                <td><span class="category-tag">${it.category || 'Geral'}</span></td>
+                                <td style="text-align: center;">${it.quantity} ${it.unit}</td>
+                                <td style="text-align: right; color: var(--text-secondary);">${Number(it.unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                                <td style="text-align: right; font-weight: 700; color: #fff;">${Number(it.total_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                            </tr>
+                        `).join('');
+                    }
+                }
+                const sum = (data.items || []).reduce((acc, it) => acc + (it.total_price || 0), 0);
+                document.getElementById('txItemsViewCount').textContent = `Total de produtos: ${(data.items || []).length}`;
+                document.getElementById('txItemsViewTotal').textContent = `Soma dos Itens: ${sum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+            } catch(e) {
+                console.error(e);
+                if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: #fb7185;">Erro ao carregar itens.</td></tr>';
+            }
+        };
+
+        window.closeTransactionItemsModal = window.closeTransactionItemsModal || function() {
+            const modal = document.getElementById('transactionItemsModal');
+            if (modal) {
+                modal.style.display = 'none';
+                modal.classList.remove('show', 'active');
+                document.body.style.overflow = '';
+            }
+        };
     </script>
-    <script src="/static/js/dashboard.js"></script>
+    <script src="/static/js/dashboard.js?v=2.8"></script>
 </body>
 </html>

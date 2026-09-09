@@ -97,6 +97,105 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
 
+        if any(w in text_lower for w in ["ver itens", "itens do cupom", "itens do mercado", "itens da compra", "produtos do cupom", "cupom fiscal", "mostrar itens", "quais itens", "detalhes do cupom", "ver cupom"]):
+            from app.models import Transaction
+            tx_with_items = db.query(Transaction).filter(
+                Transaction.workspace_id == ws.id
+            ).order_by(Transaction.transaction_date.desc(), Transaction.id.desc()).all()
+            
+            target_tx = None
+            for t in tx_with_items:
+                if t.items and len(t.items) > 0:
+                    target_tx = t
+                    break
+            
+            if not target_tx:
+                await update.message.reply_text(
+                    "🛒 *Nenhum cupom fiscal ou compra com itens detalhados foi encontrado neste perfil.*\n\n"
+                    "💡 Ao enviar a foto de um cupom de mercado ou cadastrar uma compra com itens, você poderá consultá-los aqui a qualquer momento!",
+                    parse_mode="Markdown"
+                )
+                return
+
+            items = target_tx.items
+            lines = [
+                f"🧾 *Itens Comprados - {target_tx.description}*",
+                f"💰 *Valor Total Pago:* {format_currency_br(target_tx.amount)}",
+                f"📅 *Data:* {target_tx.transaction_date.strftime('%d/%m/%Y')} • 🏷️ *Categoria:* {target_tx.category.name if target_tx.category else 'Mercado'}",
+                "───────────────────"
+            ]
+            for idx, it in enumerate(items, 1):
+                tot = it.total_price if it.total_price > 0 else (it.quantity * it.unit_price)
+                unit_str = f" ({it.quantity:g} {it.unit} x {format_currency_br(it.unit_price)})" if it.unit_price > 0 else f" ({it.quantity:g} {it.unit})"
+                lines.append(f"*{idx}.* {it.name}{unit_str} → *{format_currency_br(tot)}*")
+
+            lines.append("───────────────────")
+            lines.append(f"📊 *Total de Produtos:* {len(items)} itens discriminados")
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            item_markup = InlineKeyboardMarkup([
+                [InlineKeyboardButton("💰 Manter Só Total (Remover Itens)", callback_data=f"txdelitems_{target_tx.id}")],
+                [InlineKeyboardButton("🔙 Voltar ao Extrato", callback_data="back_to_extrato")]
+            ])
+            await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=item_markup)
+            return
+
+        # Comando: Ranking de Mercado & Itens mais consumidos
+        if any(w in text_lower for w in ["ranking mercado", "ranking de mercado", "o que mais compro", "mais consumidos", "itens mais comprados", "onde mais gasto"]):
+            from app.services.market_analytics_service import MarketAnalyticsService
+            top_items = MarketAnalyticsService.get_top_consumed_items(db, ws.id, limit=7, sort_by="spent")
+            top_stores = MarketAnalyticsService.get_supermarket_ranking(db, ws.id, limit=5)
+
+            lines = ["🏆 *Ranking de Mercado & Consumo*", "───────────────────", "📦 *Produtos com Maior Gasto:*"]
+            if not top_items:
+                lines.append("_Nenhum produto discriminado registrado ainda._")
+            else:
+                for idx, it in enumerate(top_items, 1):
+                    lines.append(f"*{idx}.* {it['name']} → *{format_currency_br(it['total_spent'])}* ({it['total_quantity']:g} {it['unit']})")
+
+            lines.append("\n🏪 *Supermercados Onde Você Mais Gasta:*")
+            if not top_stores:
+                lines.append("_Nenhum supermercado registrado ainda._")
+            else:
+                for idx, st in enumerate(top_stores, 1):
+                    lines.append(f"*{idx}.* {st['store_name']} → *{format_currency_br(st['total_spent'])}* ({st['transaction_count']} compras)")
+
+            lines.append("───────────────────")
+            lines.append("💡 _Acesse a Aba 8 no Painel Web para ver o Comparador de Preços completo!_")
+            await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=get_dashboard_link_keyboard(str(user_tg.id)))
+            return
+
+        # Comando: Comparar Preços de Produtos entre Mercados
+        if any(w in text_lower for w in ["comparar preco", "comparar preço", "comparar precos", "comparar preços", "preco de", "preço de", "onde é mais barato", "mais barato"]):
+            import re
+            from app.services.market_analytics_service import MarketAnalyticsService
+            search_query = re.sub(r"(?:comparar\s+(?:pre[çc]os?|valores?)|pre[çc]o\s+d[oe]|onde\s+[eé]\s+mais\s+barato|mais\s+barato)\s*", "", text, flags=re.IGNORECASE).strip()
+            comparisons = MarketAnalyticsService.get_cross_store_price_comparison(db, ws.id, search_term=search_query if search_query else None)
+
+            if not comparisons:
+                await update.message.reply_text(
+                    f"🔍 *Nenhum preço encontrado para \"{search_query or 'produtos'}\".*\n\n"
+                    f"💡 Ao cadastrar cupons de diferentes supermercados, você poderá comparar os preços aqui!",
+                    parse_mode="Markdown"
+                )
+                return
+
+            lines = [f"🔍 *Comparador de Preços entre Mercados*", "───────────────────"]
+            for prod in comparisons[:5]:
+                cheap = prod["cheapest_store"]
+                exp = prod["most_expensive_store"]
+                lines.append(f"🏷️ *{prod['product_name']}* ({prod['category']})")
+                lines.append(f"  🟢 *Menor Preço:* {format_currency_br(cheap['price'])}/{cheap['unit']} no *{cheap['store_name']}*")
+                if exp:
+                    lines.append(f"  🔴 *Mais Caro:* {format_currency_br(exp['price'])}/{exp['unit']} no *{exp['store_name']}*")
+                    if prod["diff_pct"] > 0:
+                        lines.append(f"  🔥 *Diferença:* +{prod['diff_pct']:.1f}% ({format_currency_br(prod['price_diff'])})")
+                lines.append("")
+
+            lines.append("───────────────────")
+            lines.append("💡 _Dica: Digite 'comparar precos leite' para buscar um produto específico._")
+            await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=get_dashboard_link_keyboard(str(user_tg.id)))
+            return
+
         if any(w in text_lower for w in ["criar conta", "nova conta", "cadastrar conta", "adicionar conta"]):
             import re
             from app.services.account_service import AccountService
@@ -430,13 +529,18 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
                 category_name=t.category_name,
                 payment_method=t.payment_method,
                 transaction_date=date,
-                receipt_url=receipt_url
+                receipt_url=receipt_url,
+                items=t.items if hasattr(t, "items") else None
             )
             last_tx = tx
             tipo_icon = "🟢 Entrada" if tx.type == "income" else "🔴 Saída"
             cat_name = tx.category.name if tx.category else "Outros"
             acc_name = tx.payment_method
-            saved_items.append(f"{tipo_icon}: *{format_currency_br(tx.amount)}* ({t.description})\n🏷️ Categoria: _{cat_name}_ • 💳 Conta: *{acc_name}*")
+            item_line = f"{tipo_icon}: *{format_currency_br(tx.amount)}* ({t.description})\n🏷️ Categoria: _{cat_name}_ • 💳 Conta: *{acc_name}*"
+            if tx.items_count > 0:
+                sample_items = [it.name for it in tx.items[:3]]
+                item_line += f"\n🛒 *{tx.items_count} itens incluídos:* " + ", ".join(sample_items) + ("..." if tx.items_count > 3 else "")
+            saved_items.append(item_line)
 
         # Caso todos os itens enviados sejam duplicados
         if not saved_items and duplicated_items:
@@ -462,7 +566,13 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
         )
         msg = "\n\n".join(msg_parts)
         accounts = AccountService.get_accounts(db, ws.id)
-        markup = get_accounts_selection_keyboard(last_tx.id, accounts, last_tx.account_id) if last_tx else None
+        markup = get_accounts_selection_keyboard(
+            last_tx.id,
+            accounts,
+            last_tx.account_id,
+            has_items=bool(last_tx and last_tx.items_count > 0),
+            items_count=last_tx.items_count if last_tx else 0
+        ) if last_tx else None
         return msg, markup
 
     # 2. Transferência entre contas / Bancos / Carteiras
@@ -619,8 +729,12 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
                 unit=it.unit,
                 estimated_price=it.estimated_price
             )
-            added.append(f"• {item.name} ({item.quantity:.0f} {item.unit})")
-        return f"🛒 *Itens adicionados à Lista de Mercado:*\n\n" + "\n".join(added), None
+            price_str = f" → ~{format_currency_br(item.estimated_price * item.quantity)}" if item.estimated_price > 0 else ""
+            added.append(f"• *{item.name}* ({item.quantity:g} {item.unit}){price_str}")
+
+        total_forecast = s_list.total_estimated
+        forecast_str = f"\n\n💰 *Total Estimado da Compra:* {format_currency_br(total_forecast)}" if total_forecast > 0 else ""
+        return f"🛒 *Itens adicionados à Lista de Mercado:*\n\n" + "\n".join(added) + forecast_str + "\n\n💡 _Os valores estimados foram baseados no histórico das suas compras anteriores._", None
 
     # 6. Troca de perfil
     elif intent == "profile_switch" and parsed.target_profile:

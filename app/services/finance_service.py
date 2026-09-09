@@ -2,7 +2,7 @@ import datetime
 from typing import Optional, List, Dict, Any, Tuple
 from sqlalchemy.orm import Session
 from sqlalchemy import func, extract, and_
-from app.models import User, Workspace, WorkspaceMember, Category, Transaction
+from app.models import User, Workspace, WorkspaceMember, Category, Transaction, TransactionItem
 
 DEFAULT_EXPENSE_CATEGORIES = [
     {"name": "Alimentação", "icon": "🍔", "color": "#f59e0b"},
@@ -211,9 +211,10 @@ class FinanceService:
         payment_method: str = "Outro",
         account_id: Optional[int] = None,
         transaction_date: Optional[datetime.datetime] = None,
-        receipt_url: Optional[str] = None
+        receipt_url: Optional[str] = None,
+        items: Optional[List[Any]] = None
     ) -> Transaction:
-        """Registra uma nova transação financeira vinculando à categoria e conta bancária adequada"""
+        """Registra uma nova transação financeira vinculando à categoria, conta bancária e itens detalhados se houver"""
         from app.services.account_service import AccountService
 
         # Busca ou cria categoria
@@ -262,6 +263,48 @@ class FinanceService:
             status="completed"
         )
         db.add(tx)
+        db.flush()
+
+        # Adiciona itens detalhados se fornecidos (item a item)
+        if items:
+            for item in items:
+                # Trata item seja objeto Pydantic ou dict
+                if hasattr(item, "model_dump"):
+                    item_data = item.model_dump()
+                elif isinstance(item, dict):
+                    item_data = item
+                else:
+                    item_data = {
+                        "name": getattr(item, "name", str(item)),
+                        "quantity": getattr(item, "quantity", 1.0),
+                        "unit": getattr(item, "unit", "un"),
+                        "unit_price": getattr(item, "unit_price", 0.0),
+                        "total_price": getattr(item, "total_price", 0.0),
+                        "category": getattr(item, "category", "Geral")
+                    }
+
+                name = str(item_data.get("name", "")).strip()
+                if not name:
+                    continue
+                
+                qty = float(item_data.get("quantity", 1.0) or 1.0)
+                unit_p = float(item_data.get("unit_price", 0.0) or 0.0)
+                tot_p = float(item_data.get("total_price", 0.0) or 0.0)
+                if tot_p == 0.0 and unit_p > 0.0:
+                    tot_p = round(qty * unit_p, 2)
+                elif unit_p == 0.0 and tot_p > 0.0 and qty > 0:
+                    unit_p = round(tot_p / qty, 2)
+
+                tx_item = TransactionItem(
+                    transaction_id=tx.id,
+                    name=name,
+                    quantity=qty,
+                    unit=str(item_data.get("unit", "un") or "un"),
+                    unit_price=unit_p,
+                    total_price=tot_p,
+                    category=str(item_data.get("category", "Geral") or "Geral")
+                )
+                db.add(tx_item)
 
         # Atualiza saldo da conta se vinculada
         if acc:
@@ -507,4 +550,186 @@ class FinanceService:
                 pass
 
         return count
+
+    @staticmethod
+    def get_transaction_items(db: Session, transaction_id: int) -> List[TransactionItem]:
+        """Recupera a lista de itens/produtos de uma transação"""
+        return db.query(TransactionItem).filter(TransactionItem.transaction_id == transaction_id).order_by(TransactionItem.id.asc()).all()
+
+    @staticmethod
+    def save_transaction_items(db: Session, transaction_id: int, items_data: List[Dict[str, Any]]) -> List[TransactionItem]:
+        """Sobrescreve/salva os itens de uma transação"""
+        # Remove itens anteriores
+        db.query(TransactionItem).filter(TransactionItem.transaction_id == transaction_id).delete()
+        created_items = []
+
+        for item in items_data:
+            name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+            qty = float(item.get("quantity", 1.0) or 1.0)
+            unit_p = float(item.get("unit_price", 0.0) or 0.0)
+            tot_p = float(item.get("total_price", 0.0) or 0.0)
+            if tot_p == 0.0 and unit_p > 0.0:
+                tot_p = round(qty * unit_p, 2)
+            elif unit_p == 0.0 and tot_p > 0.0 and qty > 0:
+                unit_p = round(tot_p / qty, 2)
+
+            t_item = TransactionItem(
+                transaction_id=transaction_id,
+                name=name,
+                quantity=qty,
+                unit=str(item.get("unit", "un") or "un"),
+                unit_price=unit_p,
+                total_price=tot_p,
+                category=str(item.get("category", "Geral") or "Geral")
+            )
+            db.add(t_item)
+            created_items.append(t_item)
+
+        db.commit()
+        return created_items
+
+    @staticmethod
+    def delete_transaction_items(db: Session, transaction_id: int) -> bool:
+        """Remove o detalhamento item a item de uma transação mantendo a transação com o valor total"""
+        tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+        if not tx:
+            return False
+        db.query(TransactionItem).filter(TransactionItem.transaction_id == transaction_id).delete()
+        db.commit()
+        try:
+            from app.services.event_bus import event_bus
+            event_bus.notify_workspace_update(tx.workspace_id)
+        except Exception:
+            pass
+        return True
+
+    @staticmethod
+    def get_items_analytics(db: Session, workspace_id: int, year: Optional[int] = None, month: Optional[int] = None) -> Dict[str, Any]:
+        """
+        Calcula estatísticas detalhadas de itens comprados no workspace/período.
+        Permite analisar o que foi comprado: top produtos por gasto e quantidade, gastos por categoria de produto, ticket médio.
+        """
+        now = datetime.datetime.now()
+        target_year = int(year) if year else now.year
+        target_month = int(month) if month else now.month
+
+        # Busca todas as transações com itens do período
+        query = db.query(TransactionItem, Transaction).join(
+            Transaction, TransactionItem.transaction_id == Transaction.id
+        ).filter(
+            Transaction.workspace_id == workspace_id,
+            extract('year', Transaction.transaction_date) == target_year,
+            extract('month', Transaction.transaction_date) == target_month
+        )
+
+        results = query.all()
+
+        total_items_count = len(results)
+        total_spent_on_items = 0.0
+        total_units_sum = 0.0
+
+        item_aggregated: Dict[str, Dict[str, Any]] = {}
+        category_aggregated: Dict[str, Dict[str, Any]] = {}
+        recent_item_purchases: List[Dict[str, Any]] = []
+
+        for item, tx in results:
+            price = item.total_price or (item.unit_price * item.quantity)
+            total_spent_on_items += price
+            total_units_sum += item.quantity
+
+            # Agregação por nome normalizado de produto
+            norm_name = item.name.strip().title()
+            if norm_name not in item_aggregated:
+                item_aggregated[norm_name] = {
+                    "name": norm_name,
+                    "total_spent": 0.0,
+                    "total_quantity": 0.0,
+                    "unit": item.unit or "un",
+                    "purchase_count": 0,
+                    "avg_price": 0.0,
+                    "last_unit_price": item.unit_price or 0.0,
+                    "category": item.category or "Geral"
+                }
+            item_aggregated[norm_name]["total_spent"] += price
+            item_aggregated[norm_name]["total_quantity"] += item.quantity
+            item_aggregated[norm_name]["purchase_count"] += 1
+            if item.unit_price > 0:
+                item_aggregated[norm_name]["last_unit_price"] = item.unit_price
+
+            # Agregação por categoria de produto
+            cat_name = item.category or "Geral"
+            if cat_name not in category_aggregated:
+                category_aggregated[cat_name] = {
+                    "category": cat_name,
+                    "total_spent": 0.0,
+                    "items_count": 0,
+                    "items": {}
+                }
+            category_aggregated[cat_name]["total_spent"] += price
+            category_aggregated[cat_name]["items_count"] += 1
+            if norm_name not in category_aggregated[cat_name]["items"]:
+                category_aggregated[cat_name]["items"][norm_name] = {
+                    "name": norm_name,
+                    "total_spent": 0.0,
+                    "total_quantity": 0.0,
+                    "unit": item.unit or "un"
+                }
+            category_aggregated[cat_name]["items"][norm_name]["total_spent"] += price
+            category_aggregated[cat_name]["items"][norm_name]["total_quantity"] += item.quantity
+
+            recent_item_purchases.append({
+                "id": item.id,
+                "transaction_id": tx.id,
+                "transaction_desc": tx.description,
+                "transaction_date": tx.transaction_date.strftime("%d/%m/%Y"),
+                "name": item.name,
+                "quantity": item.quantity,
+                "unit": item.unit,
+                "unit_price": item.unit_price,
+                "total_price": price,
+                "category": item.category
+            })
+
+        # Calcula preços médios
+        for k, v in item_aggregated.items():
+            if v["total_quantity"] > 0:
+                v["avg_price"] = round(v["total_spent"] / v["total_quantity"], 2)
+            v["total_spent"] = round(v["total_spent"], 2)
+            v["total_quantity"] = round(v["total_quantity"], 2)
+
+        # Top itens por maior valor total gasto
+        top_by_spent = sorted(item_aggregated.values(), key=lambda x: x["total_spent"], reverse=True)[:10]
+
+        # Top itens mais frequentes / comprados
+        top_by_quantity = sorted(item_aggregated.values(), key=lambda x: (x["purchase_count"], x["total_quantity"]), reverse=True)[:10]
+
+        # Categorias de produtos ordenadas
+        categories_list = []
+        for cat in sorted(category_aggregated.values(), key=lambda x: x["total_spent"], reverse=True):
+            items_arr = sorted(cat["items"].values(), key=lambda x: x["total_spent"], reverse=True)
+            for it in items_arr:
+                it["total_spent"] = round(it["total_spent"], 2)
+                it["total_quantity"] = round(it["total_quantity"], 2)
+            categories_list.append({
+                "category": cat["category"],
+                "total_spent": round(cat["total_spent"], 2),
+                "items_count": cat["items_count"],
+                "items_list": items_arr
+            })
+
+        return {
+            "workspace_id": workspace_id,
+            "year": target_year,
+            "month": target_month,
+            "total_items_count": total_items_count,
+            "total_spent_on_items": round(total_spent_on_items, 2),
+            "total_units_sum": round(total_units_sum, 2),
+            "top_by_spent": top_by_spent,
+            "top_by_quantity": top_by_quantity,
+            "categories": categories_list,
+            "recent_items": recent_item_purchases[:30]
+        }
+
 

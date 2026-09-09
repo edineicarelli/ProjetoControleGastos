@@ -16,11 +16,13 @@ from app.utils import format_currency_br, format_number_br
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """Você é o cérebro financeiro do Bot de Gestão Financeira Inteligente no Telegram.
-Sua missão é analisar mensagens dos usuários (texto livre, transcrição de áudios de voz ou fotos de cupons/recibos/notas fiscais) e extrair os dados financeiros estruturados.
+Sua missão é analisar mensagens dos usuários (texto livre, transcrição de áudios de voz ou fotos de cupons/recibos/notas fiscais/PDFs) e extrair os dados financeiros estruturados com máxima precisão.
 
 Você deve responder RIGOROSAMENTE em formato JSON com as chaves:
 - `intent`: Uma das opções: 'transaction_record', 'account_transfer', 'reminder_create', 'goal_action', 'vehicle_action', 'shopping_action', 'financial_query', 'profile_switch', 'general_chat'
-- `transactions`: Lista de transações encontradas: [{"type": "expense" ou "income", "amount": float, "description": str, "category_name": str, "payment_method": str, "date_offset_days": int}]
+- `transactions`: Lista de transações encontradas: [{"type": "expense" ou "income", "amount": float, "description": str, "category_name": str, "payment_method": str, "date_offset_days": int, "items": [{"name": str, "quantity": float, "unit": str, "unit_price": float, "total_price": float, "category": str}]}]
+  OBSERVAÇÃO SOBRE ITENS E UNIDADE DE MEDIDA: Sempre que o comprovante/cupom fiscal/nota fiscal/PDF contiver detalhamento de produtos (ex: compras de mercado, farmácia, atacado, materiais, consumo detalhado), extraia na chave `items` cada produto individualmente com nome, quantidade, unidade, preço unitário e valor total.
+  ATENÇÃO À UNIDADE COMERCIAL: Itens vendidos a granel ou por peso na balança (ex: Pão Francês, Pão de Sal, Pão de Queijo a peso, Queijo/Presunto fatiado, Carnes/Açougue/Frango/Peixe, Hortifruti/Frutas/Legumes/Verduras) SEMPRE devem ter a unidade `kg` (ou `g`), NUNCA `un`. Para produtos em embalagens fechadas use `un`, `pct`, `cx` ou `l`.
 - `transfer`: Se for account_transfer (transferência entre contas, bancos, dinheiro, saques, depósitos): {"from_account": str (conta devedora/origem), "to_account": str (conta credora/destino), "amount": float, "description": str}
 - `reminder`: Se for reminder_create: {"title": str, "amount": float, "type": "to_pay" ou "to_receive", "due_date": "YYYY-MM-DD", "recurrence": "none"|"monthly"|"weekly"}
 - `goal`: Se for goal_action: {"action": "deposit"|"create"|"check", "goal_name": str, "amount": float}
@@ -33,11 +35,11 @@ Você deve responder RIGOROSAMENTE em formato JSON com as chaves:
 class AIService:
     def __init__(self):
         self.models = [
-            "gemini-3.1-flash-lite-preview",
-            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-3.7-flash",
+            "gemini-3.5-flash",
             "gemini-3.6-flash",
-            "gemini-3.8-flash",
-            "gemini-flash-lite-latest"
+            "gemini-flash-latest"
         ]
 
     @property
@@ -64,11 +66,12 @@ class AIService:
             }
         }
 
-        async with httpx.AsyncClient(timeout=12.0) as client:
+        async with httpx.AsyncClient(timeout=45.0) as client:
             for model_name in self.models:
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
                 try:
                     response = await client.post(url, json=payload)
+
                     if response.status_code == 200:
                         data = response.json()
                         raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
@@ -164,9 +167,16 @@ class AIService:
                     f"1. Identifique o Nome do Estabelecimento ou Beneficiário (ex: 'Supermercado X', 'Posto Y', 'Farmácia Z', 'João Silva').\n"
                     f"2. Identifique o VALOR TOTAL PAGO (procure por 'TOTAL R$', 'VALOR A PAGAR', 'VALOR TOTAL', 'VALOR LÍQUIDO', 'VALOR:', 'PAGAMENTO', 'R$').\n"
                     f"3. Identifique a forma de pagamento ou banco (ex: Pix, Cartão de Crédito, Débito, Dinheiro, Banco do Brasil, Caixa, Santander, Nubank, Itaú, Bradesco, Inter).\n"
-                    f"4. Categorize a despesa (Alimentação, Transporte, Saúde, Moradia, etc.) ou se for comprovante recebido marque como 'income'.\n"
-                    f"5. Se a imagem NÃO for um comprovante financeiro ou estiver ilegível/embaçada e não for possível encontrar o valor, retorne intent 'general_chat' com friendly_response explicando de forma clara e amigável que não conseguiu ler o comprovante e orientando o usuário a enviar uma foto mais nítida.\n"
-                    f"6. Retorne RIGOROSAMENTE o JSON solicitado."
+                    f"4. Categorize a despesa (Alimentação, Supermercado, Transporte, Saúde, Moradia, etc.) ou se for comprovante recebido marque como 'income'.\n"
+                    f"5. DETALHAMENTO DE ITENS (MUITO IMPORTANTE): Se o cupom/recibo/nota contiver uma lista de produtos/itens comprados (ex: compras de supermercado, farmácia, atacado, restaurante detalhado, materiais), extraia CADA PRODUTO individualmente no array 'items' dentro da transação contendo:\n"
+                    f"   - 'name': Nome legível e completo do produto\n"
+                    f"   - 'quantity': Quantidade comprada (float, ex: 1.0, 2.5, 0.75)\n"
+                    f"   - 'unit': Unidade comercial ('kg' para itens pesados na balança como pão francês, hortifruti, carnes e frios; 'un', 'pct', 'cx', 'l' para os demais)\n"
+                    f"   - 'unit_price': Preço unitário em reais\n"
+                    f"   - 'total_price': Preço total do item (quantity * unit_price)\n"
+                    f"   - 'category': Categoria sugerida para o item (ex: 'Mercearia', 'Hortifruti', 'Carnes & Aves', 'Laticínios & Frios', 'Bebidas', 'Limpeza', 'Higiene & Beleza', 'Padaria', 'Farmácia', 'Geral')\n"
+                    f"6. Se a imagem NÃO for um comprovante financeiro ou estiver ilegível/embaçada e não for possível encontrar o valor, retorne intent 'general_chat' com friendly_response explicando de forma clara e amigável que não conseguiu ler o comprovante e orientando o usuário a enviar uma foto mais nítida.\n"
+                    f"7. Retorne RIGOROSAMENTE o JSON solicitado."
                 )
                 parts = [
                     {
@@ -238,8 +248,9 @@ class AIService:
                     f"     - due_date: Data de vencimento no formato YYYY-MM-DD\n"
                     f"     - type: 'to_pay'\n"
                     f"     - recurrence: 'none' ou 'monthly' se for recorrente\n"
-                    f"2. Se o documento for um COMPROVANTE DE PAGAMENTO JÁ REALIZADO, PIX EFETUADO OU CUPOM FISCAL:\n"
+                    f"2. Se o documento for um COMPROVANTE DE PAGAMENTO JÁ REALIZADO, PIX EFETUADO, NOTA FISCAL (DANFE/NFC-e) OU CUPOM FISCAL:\n"
                     f"   - Retorne intent 'transaction_record' com o lançamento de despesa ou receita correspondente.\n"
+                    f"   - DETALHAMENTO DE ITENS: Se o documento contiver produtos/itens discriminados (ex: DANFE, cupom de compras, mercado, farmácia), extraia CADA PRODUTO individualmente no array 'items' dentro da transação contendo: name, quantity, unit, unit_price, total_price e category.\n"
                     f"3. Se o documento for ilegível, protegido por senha ou sem dados financeiros, retorne intent 'general_chat' explicando o problema de forma clara.\n"
                     f"4. Retorne RIGOROSAMENTE o JSON especificado."
                 )

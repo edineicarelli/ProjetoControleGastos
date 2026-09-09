@@ -28,3 +28,34 @@ class Transaction(Base):
     user = relationship("User", back_populates="transactions")
     category = relationship("Category", back_populates="transactions")
     account = relationship("Account", back_populates="transactions")
+    items = relationship("TransactionItem", back_populates="transaction", cascade="all, delete-orphan", order_by="TransactionItem.id")
+
+    @property
+    def items_count(self) -> int:
+        return len(self.items) if self.items else 0
+
+    @property
+    def has_items(self) -> bool:
+        return bool(self.items and len(self.items) > 0)
+
+class TransactionItem(Base):
+    """
+    Itens individuais/produtos de uma transação (ex: itens de cupom fiscal de mercado, farmácia, etc.)
+    Permite analisar o que foi comprado item a item com o valor total gasto.
+    """
+    __tablename__ = "transaction_items"
+
+    id = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(Integer, ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False, index=True)
+
+    name = Column(String, nullable=False)
+    quantity = Column(Float, default=1.0)
+    unit = Column(String, default="un")  # un, kg, g, l, pct, cx, etc.
+    unit_price = Column(Float, default=0.0)
+    total_price = Column(Float, default=0.0)
+    category = Column(String, default="Geral")  # Categoria específica do item (Mercearia, Hortifruti, Limpeza, etc.)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    # Relationships
+    transaction = relationship("Transaction", back_populates="items")
+

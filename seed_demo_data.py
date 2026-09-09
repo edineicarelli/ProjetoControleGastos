@@ -26,11 +26,62 @@ def seed():
         FinanceService.add_transaction(db, ws_pf.id, user.id, "income", 5500.0, "Salário Mensal", "Salário", "Pix", now - datetime.timedelta(days=2))
         FinanceService.add_transaction(db, ws_pf.id, user.id, "income", 1200.0, "Freela de Desenvolvimento", "Freelas & Extras", "Pix", now - datetime.timedelta(days=1))
 
-        FinanceService.add_transaction(db, ws_pf.id, user.id, "expense", 450.0, "Supermercado Mensal", "Alimentação", "Cartão de Crédito", now - datetime.timedelta(days=2))
+        # Adiciona transação de supermercado com detalhamento item a item
+        market_items = [
+            {"name": "Arroz Nobre 5kg", "quantity": 1.0, "unit": "pct", "unit_price": 32.90, "total_price": 32.90, "category": "Mercearia"},
+            {"name": "Feijão Carioca 1kg", "quantity": 2.0, "unit": "pct", "unit_price": 8.50, "total_price": 17.00, "category": "Mercearia"},
+            {"name": "Azeite de Oliva Extra Virgem 500ml", "quantity": 1.0, "unit": "un", "unit_price": 48.90, "total_price": 48.90, "category": "Mercearia"},
+            {"name": "Picanha Bovina Resfriada", "quantity": 1.4, "unit": "kg", "unit_price": 89.90, "total_price": 125.86, "category": "Carnes & Aves"},
+            {"name": "Peito de Frango Filezinho", "quantity": 2.0, "unit": "kg", "unit_price": 22.90, "total_price": 45.80, "category": "Carnes & Aves"},
+            {"name": "Leite Integral Piracanjuba 1L", "quantity": 6.0, "unit": "un", "unit_price": 5.49, "total_price": 32.94, "category": "Laticínios & Frios"},
+            {"name": "Queijo Muçarela Fatiado", "quantity": 0.5, "unit": "kg", "unit_price": 46.00, "total_price": 23.00, "category": "Laticínios & Frios"},
+            {"name": "Café Torrado e Moído 500g", "quantity": 2.0, "unit": "pct", "unit_price": 19.80, "total_price": 39.60, "category": "Mercearia"},
+            {"name": "Detergente Líquido Ypê", "quantity": 4.0, "unit": "un", "unit_price": 2.99, "total_price": 11.96, "category": "Limpeza"},
+            {"name": "Sabão em Pó Omo 1.6kg", "quantity": 1.0, "unit": "cx", "unit_price": 36.90, "total_price": 36.90, "category": "Limpeza"},
+            {"name": "Maçã Gala Nacional", "quantity": 1.5, "unit": "kg", "unit_price": 9.90, "total_price": 14.85, "category": "Hortifruti"},
+            {"name": "Banana Prata", "quantity": 1.2, "unit": "kg", "unit_price": 7.90, "total_price": 9.48, "category": "Hortifruti"},
+            {"name": "Papel Higiênico Neve 12 rolos", "quantity": 1.0, "unit": "pct", "unit_price": 29.90, "total_price": 29.90, "category": "Higiene & Beleza"}
+        ]
+        market_total = round(sum(it["total_price"] for it in market_items), 2)
+
+        FinanceService.add_transaction(
+            db=db,
+            workspace_id=ws_pf.id,
+            user_id=user.id,
+            type="expense",
+            amount=market_total,
+            description="Supermercado Pão de Açúcar",
+            category_name="Supermercado",
+            payment_method="Cartão de Crédito",
+            transaction_date=now - datetime.timedelta(days=2),
+            items=market_items
+        )
+
+        # Transação de farmácia com itens
+        pharma_items = [
+            {"name": "Vitamina C + Zinco Efervescente", "quantity": 2.0, "unit": "cx", "unit_price": 24.90, "total_price": 49.80, "category": "Farmácia"},
+            {"name": "Protetor Solar FPS 50 200ml", "quantity": 1.0, "unit": "un", "unit_price": 59.90, "total_price": 59.90, "category": "Higiene & Beleza"},
+            {"name": "Dipirona 500mg 20 comp", "quantity": 1.0, "unit": "cx", "unit_price": 9.50, "total_price": 9.50, "category": "Farmácia"}
+        ]
+        pharma_total = round(sum(it["total_price"] for it in pharma_items), 2)
+
+        FinanceService.add_transaction(
+            db=db,
+            workspace_id=ws_pf.id,
+            user_id=user.id,
+            type="expense",
+            amount=pharma_total,
+            description="Drogaria São Paulo",
+            category_name="Saúde & Farmácia",
+            payment_method="Pix",
+            transaction_date=now - datetime.timedelta(days=5),
+            items=pharma_items
+        )
+
         FinanceService.add_transaction(db, ws_pf.id, user.id, "expense", 85.50, "Jantar Restaurante", "Alimentação", "Cartão de Débito", now - datetime.timedelta(days=1))
         FinanceService.add_transaction(db, ws_pf.id, user.id, "expense", 180.0, "Combustível Posto Shell", "Transporte", "Cartão de Débito", now - datetime.timedelta(days=3))
         FinanceService.add_transaction(db, ws_pf.id, user.id, "expense", 120.0, "Internet Fibra", "Moradia", "Boleto", now - datetime.timedelta(days=4))
-        FinanceService.add_transaction(db, ws_pf.id, user.id, "expense", 65.0, "Farmácia", "Saúde", "Pix", now - datetime.timedelta(days=5))
+
 
         # Adiciona Lembretes
         ReminderService.create_reminder(db, ws_pf.id, user.id, "Condomínio Edifício", 480.0, now + datetime.timedelta(days=4), recurrence="monthly")

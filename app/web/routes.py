@@ -1,20 +1,22 @@
 import os
 import json
 import asyncio
-from typing import Optional, List
-from fastapi import APIRouter, Request, Depends, Query, HTTPException, WebSocket, WebSocketDisconnect
+from typing import Optional, List, Dict, Any
+from fastapi import APIRouter, Request, Depends, Query, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.database import get_db
-from app.models import User, Workspace, WorkspaceMember, Goal, Reminder, ShoppingList, Category
+from app.models import User, Workspace, WorkspaceMember, Goal, Reminder, ShoppingList, Category, Transaction, TransactionItem
 from app.services.finance_service import FinanceService
+from app.services.ai_service import AIService
 from app.services.reminder_service import ReminderService
 from app.services.vehicle_service import VehicleService
 from app.services.shopping_service import ShoppingService
 from app.services.account_service import AccountService
 from app.services.user_service import UserService
 from app.services.export_service import ExportService
+from app.services.market_analytics_service import MarketAnalyticsService
 from app.services.event_bus import event_bus
 
 from app.utils import format_currency_br, format_number_br
@@ -223,8 +225,43 @@ class UserUpdateRequest(BaseModel):
     role: Optional[str] = None
     is_active: Optional[bool] = None
 
+class TransactionItemPayload(BaseModel):
+    name: str
+    quantity: float = 1.0
+    unit: str = "un"
+    unit_price: float = 0.0
+    total_price: float = 0.0
+    category: Optional[str] = "Geral"
+
+class TransactionCreateRequest(BaseModel):
+    workspace_id: int
+    user_id: Optional[int] = None
+    type: str = "expense"
+    amount: float
+    description: str
+    category_name: Optional[str] = "Outros"
+    payment_method: Optional[str] = "Outro"
+    account_id: Optional[int] = None
+    date: Optional[str] = None
+    receipt_url: Optional[str] = None
+    include_items: bool = True
+    items: Optional[List[TransactionItemPayload]] = None
+
 class BatchDeleteTransactionsRequest(BaseModel):
     transaction_ids: List[int]
+
+class UpdateTransactionItemsRequest(BaseModel):
+    items: List[TransactionItemPayload]
+
+class AddShoppingItemRequest(BaseModel):
+    workspace_id: int
+    name: str
+    quantity: Optional[float] = 1.0
+    unit: Optional[str] = "un"
+    estimated_price: Optional[float] = 0.0
+    category: Optional[str] = "Geral"
+
+
 
 # APIs para Perfis / Workspaces
 @router.post("/api/workspaces")
@@ -453,6 +490,324 @@ async def api_transfer_accounts(payload: AccountTransferRequest, db: Session = D
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao processar transferência: {str(e)}")
 
+
+@router.post("/api/receipts/analyze")
+async def api_analyze_receipt(
+    file: UploadFile = File(...),
+    workspace_id: int = Form(...),
+    user_id: Optional[int] = Form(None),
+    db: Session = Depends(get_db)
+):
+    """
+    Recebe upload de imagem ou documento (PDF, JPG, PNG, WebP) de nota fiscal, cupom ou comprovante,
+    processa via Gemini OCR Multimodal e retorna todos os dados financeiros estruturados,
+    incluindo nome do estabelecimento, valor total, categoria, forma de pagamento e detalhamento item a item dos produtos.
+    """
+    from app.config import settings
+    import uuid
+    from datetime import datetime
+
+    ai_service = AIService()
+    filename = file.filename or "receipt.jpg"
+    ext = os.path.splitext(filename)[1].lower()
+    if not ext:
+        ext = ".jpg"
+
+    unique_id = uuid.uuid4().hex[:8]
+    save_folder = "receipts" if ext in [".jpg", ".jpeg", ".png", ".webp"] else "documents"
+    dir_path = os.path.join(settings.UPLOAD_DIR, save_folder)
+    os.makedirs(dir_path, exist_ok=True)
+    saved_path = os.path.join(dir_path, f"upload_{unique_id}_{filename}")
+
+    # Salva arquivo enviado no disco
+    content = await file.read()
+    with open(saved_path, "wb") as f:
+        f.write(content)
+
+    ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
+    user = None
+    if user_id:
+        user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        user = db.query(User).first()
+
+    user_context = {
+        "user_name": user.name if user else "Usuário",
+        "workspace_name": ws.name if ws else "Geral",
+        "workspace_type": ws.type if ws else "personal"
+    }
+
+    try:
+        if ext in [".jpg", ".jpeg", ".png", ".webp"] or (file.content_type and file.content_type.startswith("image/")):
+            parsed = await ai_service.parse_receipt_image(saved_path, user_context=user_context)
+        else:
+            mime = file.content_type or "application/pdf"
+            parsed = await ai_service.parse_document(saved_path, mime_type=mime, user_context=user_context)
+
+        # Extrai transações e itens
+        first_tx = parsed.transactions[0] if parsed.transactions else None
+        extracted_items = []
+        if first_tx and first_tx.items:
+            for it in first_tx.items:
+                extracted_items.append({
+                    "name": it.name,
+                    "quantity": it.quantity,
+                    "unit": it.unit,
+                    "unit_price": it.unit_price,
+                    "total_price": it.total_price,
+                    "category": it.category or "Geral"
+                })
+
+        if first_tx:
+            tx_amount = first_tx.amount
+            tx_desc = first_tx.description
+            tx_type = first_tx.type
+            tx_cat = first_tx.category_name
+            tx_payment = first_tx.payment_method
+        elif parsed.reminder:
+            tx_amount = parsed.reminder.amount
+            tx_desc = parsed.reminder.title
+            tx_type = "expense" if parsed.reminder.type == "to_pay" else "income"
+            tx_cat = "Contas & Serviços"
+            tx_payment = "Boleto/Pix"
+        else:
+            tx_amount = 0.0
+            tx_desc = os.path.splitext(filename)[0].replace("_", " ").title()
+            tx_type = "expense"
+            tx_cat = "Outros"
+            tx_payment = "Cartão de Crédito"
+
+        # Formata data
+        tx_date = datetime.now().strftime("%Y-%m-%d")
+
+        return {
+            "success": True,
+            "receipt_url": saved_path,
+            "filename": filename,
+            "description": tx_desc,
+            "amount": tx_amount,
+            "type": tx_type,
+            "category_name": tx_cat,
+            "payment_method": tx_payment,
+            "date": tx_date,
+            "has_items": len(extracted_items) > 0,
+            "items_count": len(extracted_items),
+            "items": extracted_items,
+            "friendly_response": parsed.friendly_response
+        }
+
+    except Exception as e:
+        return {
+            "success": False,
+            "receipt_url": saved_path,
+            "filename": filename,
+            "error": str(e),
+            "description": "Despesa",
+            "amount": 0.0,
+            "type": "expense",
+            "category_name": "Outros",
+            "payment_method": "Outro",
+            "items": [],
+            "friendly_response": "Não foi possível extrair dados automaticamente deste arquivo."
+        }
+
+@router.post("/api/transactions")
+async def api_create_transaction(payload: TransactionCreateRequest, db: Session = Depends(get_db)):
+    """
+    Cria uma nova transação financeira com suporte a inclusão opcional de itens detalhados (item a item)
+    ou gravação exclusiva de valor total consolidado.
+    """
+    from datetime import datetime
+    tx_date = None
+    if payload.date:
+        try:
+            tx_date = datetime.strptime(payload.date, "%Y-%m-%d")
+        except Exception:
+            tx_date = None
+
+    user_id = payload.user_id
+    if not user_id:
+        user = db.query(User).first()
+        user_id = user.id if user else 1
+
+    items_to_save = payload.items if (payload.include_items and payload.items) else None
+
+    tx = FinanceService.add_transaction(
+        db=db,
+        workspace_id=payload.workspace_id,
+        user_id=user_id,
+        type=payload.type,
+        amount=payload.amount,
+        description=payload.description,
+        category_name=payload.category_name or "Outros",
+        payment_method=payload.payment_method or "Outro",
+        account_id=payload.account_id,
+        transaction_date=tx_date,
+        receipt_url=payload.receipt_url,
+        items=items_to_save
+    )
+
+    return {
+        "success": True,
+        "transaction_id": tx.id,
+        "amount": tx.amount,
+        "items_count": tx.items_count
+    }
+
+@router.get("/api/transactions/{transaction_id}/items")
+async def api_get_transaction_items(transaction_id: int, db: Session = Depends(get_db)):
+    """Retorna os itens discriminados de uma transação específica"""
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Lançamento não encontrado")
+    
+    items = FinanceService.get_transaction_items(db, transaction_id)
+    return {
+        "transaction_id": tx.id,
+        "description": tx.description,
+        "amount": tx.amount,
+        "type": tx.type,
+        "date": tx.transaction_date.strftime("%d/%m/%Y"),
+        "category": tx.category.name if tx.category else "Outros",
+        "items": [
+            {
+                "id": it.id,
+                "name": it.name,
+                "quantity": it.quantity,
+                "unit": it.unit,
+                "unit_price": it.unit_price,
+                "total_price": it.total_price,
+                "category": it.category
+            }
+            for it in items
+        ]
+    }
+
+@router.delete("/api/transactions/{transaction_id}/items")
+async def api_delete_transaction_items(transaction_id: int, db: Session = Depends(get_db)):
+    """Remove a discriminação de itens de uma transação, mantendo o lançamento com o valor total"""
+    success = FinanceService.delete_transaction_items(db, transaction_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Lançamento não encontrado")
+    return {"success": True}
+
+@router.put("/api/transactions/{transaction_id}/items")
+async def api_update_transaction_items(
+    transaction_id: int,
+    payload: UpdateTransactionItemsRequest,
+    db: Session = Depends(get_db)
+):
+    """Atualiza/salva a lista de itens discriminados de uma transação existente"""
+    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    if not tx:
+        raise HTTPException(status_code=404, detail="Lançamento não encontrado")
+    
+    items_data = [item.model_dump() for item in payload.items]
+    saved = FinanceService.save_transaction_items(db, transaction_id, items_data)
+    return {
+        "success": True,
+        "transaction_id": transaction_id,
+        "items_count": len(saved)
+    }
+
+
+@router.get("/api/analytics/items")
+async def api_get_items_analytics(
+    workspace_id: int = Query(...),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Retorna a análise e estatísticas completas de itens e produtos comprados no período"""
+    data = FinanceService.get_items_analytics(db, workspace_id, year=year, month=month)
+    return data
+
+@router.get("/api/market/ranking")
+async def api_get_market_ranking(
+    workspace_id: int = Query(...),
+    sort_by: str = Query("spent"),
+    year: Optional[int] = Query(None),
+    month: Optional[int] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Retorna o ranking de itens mais consumidos e ranking de supermercados/gastos"""
+    top_items = MarketAnalyticsService.get_top_consumed_items(
+        db, workspace_id, limit=20, sort_by=sort_by, year=year, month=month
+    )
+    top_stores = MarketAnalyticsService.get_supermarket_ranking(
+        db, workspace_id, limit=10, year=year, month=month
+    )
+    return {
+        "top_items": top_items,
+        "top_stores": top_stores
+    }
+
+@router.get("/api/market/compare-prices")
+async def api_compare_market_prices(
+    workspace_id: int = Query(...),
+    query: Optional[str] = Query(None),
+    db: Session = Depends(get_db)
+):
+    """Compara preços unitários do mesmo produto entre diferentes supermercados"""
+    comparisons = MarketAnalyticsService.get_cross_store_price_comparison(
+        db, workspace_id, search_term=query
+    )
+    return {
+        "comparisons": comparisons
+    }
+
+@router.get("/api/market/last-price")
+async def api_get_last_item_price(
+    workspace_id: int = Query(...),
+    item_name: str = Query(...),
+    db: Session = Depends(get_db)
+):
+    """Busca o preço unitário da última compra do item para pré-cadastro na lista de mercado"""
+    price_info = MarketAnalyticsService.get_last_item_purchase_price(
+        db, workspace_id, item_name=item_name
+    )
+    return price_info
+
+@router.post("/api/shopping/items")
+async def api_add_shopping_item(
+    payload: AddShoppingItemRequest,
+    db: Session = Depends(get_db)
+):
+    """Adiciona produto na lista ativa de compras com estimativa de preço automática"""
+    s_list = ShoppingService.get_or_create_active_list(db, payload.workspace_id)
+    item = ShoppingService.add_item(
+        db=db,
+        list_id=s_list.id,
+        name=payload.name,
+        quantity=payload.quantity or 1.0,
+        unit=payload.unit or "un",
+        estimated_price=payload.estimated_price or 0.0,
+        category=payload.category or "Geral"
+    )
+    return {
+        "success": True,
+        "item": {
+            "id": item.id,
+            "name": item.name,
+            "quantity": item.quantity,
+            "unit": item.unit,
+            "estimated_price": item.estimated_price,
+            "total_estimated": item.estimated_price * item.quantity,
+            "category": item.category,
+            "is_checked": item.is_checked
+        },
+        "list_total_estimated": s_list.total_estimated
+    }
+
+@router.delete("/api/shopping/items/{item_id}")
+async def api_delete_shopping_item(item_id: int, db: Session = Depends(get_db)):
+    from app.models import ShoppingItem
+    item = db.query(ShoppingItem).filter(ShoppingItem.id == item_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Item não encontrado")
+    db.delete(item)
+    db.commit()
+    return {"success": True}
 
 @router.delete("/api/transactions/{transaction_id}")
 async def api_delete_transaction(transaction_id: int, db: Session = Depends(get_db)):

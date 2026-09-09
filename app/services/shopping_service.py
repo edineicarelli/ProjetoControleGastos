@@ -28,6 +28,21 @@ class ShoppingService:
         estimated_price: float = 0.0,
         category: str = "Geral"
     ) -> ShoppingItem:
+        from app.services.market_analytics_service import MarketAnalyticsService
+
+        s_list = db.query(ShoppingList).filter(ShoppingList.id == list_id).first()
+        ws_id = s_list.workspace_id if s_list else None
+
+        # Se não forneceu preço estimado ou unidade personalizada, busca na inteligência de mercado / histórico
+        if ws_id:
+            last_price_info = MarketAnalyticsService.get_last_item_purchase_price(db, ws_id, name)
+            if (estimated_price is None or estimated_price <= 0) and last_price_info.get("estimated_unit_price"):
+                estimated_price = last_price_info["estimated_unit_price"]
+            if unit == "un" and last_price_info.get("unit") and last_price_info.get("unit") != "un":
+                unit = last_price_info["unit"]
+            if category == "Geral" and last_price_info.get("category"):
+                category = last_price_info["category"]
+
         item = ShoppingItem(
             shopping_list_id=list_id,
             name=name.strip(),

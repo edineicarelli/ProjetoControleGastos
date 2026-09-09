@@ -550,21 +550,56 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
 
         elif data.startswith("del_tx_"):
             tx_id = int(data.split("_")[-1])
+            FinanceService.delete_transaction(db, tx_id)
+            await query.edit_message_text("🗑️ *Lançamento excluído com sucesso!*", parse_mode="Markdown")
+
+        elif data.startswith("txitems_"):
+            tx_id = int(data.split("_")[-1])
+            from app.models import Transaction
+            tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if not tx:
+                await query.edit_message_text("⚠️ Lançamento não encontrado.", parse_mode="Markdown")
+            else:
+                items = FinanceService.get_transaction_items(db, tx_id)
+                if not items:
+                    await query.edit_message_text(
+                        f"🧾 *{tx.description}* ({format_currency_br(tx.amount)})\n\n"
+                        f"Nenhum item individual discriminado para este lançamento.",
+                        parse_mode="Markdown"
+                    )
+                else:
+                    lines = [
+                        f"🧾 *Itens Comprados - {tx.description}*",
+                        f"💰 *Total:* {format_currency_br(tx.amount)} | 📅 *Data:* {tx.transaction_date.strftime('%d/%m/%Y')}",
+                        "───────────────────"
+                    ]
+                    for idx, it in enumerate(items, 1):
+                        tot = it.total_price if it.total_price > 0 else (it.quantity * it.unit_price)
+                        unit_str = f" ({it.quantity:g} {it.unit} x {format_currency_br(it.unit_price)})" if it.unit_price > 0 else f" ({it.quantity:g} {it.unit})"
+                        lines.append(f"*{idx}.* {it.name}{unit_str} → *{format_currency_br(tot)}*")
+
+                    lines.append("───────────────────")
+                    lines.append(f"📊 *Total de Itens:* {len(items)} produtos")
+                    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                    item_markup = InlineKeyboardMarkup([
+                        [InlineKeyboardButton("💰 Remover Itens (Manter só Total)", callback_data=f"txdelitems_{tx.id}")],
+                        [InlineKeyboardButton("🔙 Voltar", callback_data="back_to_extrato")]
+                    ])
+                    await query.edit_message_text("\n".join(lines), parse_mode="Markdown", reply_markup=item_markup)
+
+        elif data.startswith("txdelitems_"):
+            tx_id = int(data.split("_")[-1])
             from app.models import Transaction
             tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
             if tx:
-                desc = tx.description
-                val = format_currency_br(tx.amount)
-                FinanceService.delete_transaction(db, tx_id)
-                summary = FinanceService.get_monthly_summary(db, ws.id)
+                FinanceService.delete_transaction_items(db, tx_id)
                 await query.edit_message_text(
-                    f"🗑️ *Lançamento excluído com sucesso!*\n\n"
-                    f"📝 *{desc}* ({val})\n"
-                    f"💰 *Novo Saldo do Mês:* {format_currency_br(summary['net_balance'])}",
+                    f"✅ *Detalhamento de Itens Removido!*\n\n"
+                    f"O lançamento *{tx.description}* foi mantido no valor total consolidado de *{format_currency_br(tx.amount)}*.",
                     parse_mode="Markdown"
                 )
             else:
-                await query.edit_message_text("⚠️ Lançamento já foi excluído ou não encontrado.", parse_mode="Markdown")
+                await query.edit_message_text("⚠️ Lançamento não encontrado.", parse_mode="Markdown")
 
         elif data == "back_to_extrato":
             from app.models import Transaction
@@ -578,7 +613,8 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                     icon = "🟢 +" if t.type == "income" else "🔴 -"
                     cat = t.category.name if t.category else "Outros"
                     dt = t.transaction_date.strftime("%d/%m")
-                    msg += f"{icon} *{format_currency_br(t.amount)}* | {t.description}\n   🏷️ _{cat}_ • 💳 _{t.payment_method}_ • 📅 _{dt}_\n\n"
+                    items_badge = f" • 🛒 {t.items_count} itens" if t.items_count > 0 else ""
+                    msg += f"{icon} *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 💳 _{t.payment_method}_ • 📅 _{dt}_\n\n"
                 await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_extrato_keyboard())
 
 

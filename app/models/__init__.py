@@ -2,7 +2,7 @@ from app.models.user import User
 from app.models.workspace import Workspace, WorkspaceMember
 from app.models.category import Category
 from app.models.account import Account
-from app.models.transaction import Transaction
+from app.models.transaction import Transaction, TransactionItem
 from app.models.reminder import Reminder
 from app.models.goal import Goal
 from app.models.vehicle import Vehicle, VehicleMaintenance
@@ -15,6 +15,7 @@ __all__ = [
     "Category",
     "Account",
     "Transaction",
+    "TransactionItem",
     "Reminder",
     "Goal",
     "Vehicle",

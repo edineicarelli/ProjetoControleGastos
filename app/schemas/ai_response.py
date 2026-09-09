@@ -1,14 +1,25 @@
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Optional, Literal
 
+class ExtractedTransactionItem(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    name: str = Field(..., description="Nome do produto ou item comprado (ex: 'Arroz 5kg', 'Leite Integral 1L')")
+    quantity: float = Field(1.0, description="Quantidade comprada do produto")
+    unit: str = Field("un", description="Unidade de medida: 'un', 'kg', 'g', 'l', 'pct', 'cx', etc.")
+    unit_price: float = Field(0.0, description="Preço unitário do produto em reais")
+    total_price: float = Field(0.0, description="Preço total deste item (quantidade * unit_price)")
+    category: Optional[str] = Field("Geral", description="Categoria específica do item (ex: Mercearia, Hortifruti, Carnes, Bebidas, Limpeza, Farmácia, etc.)")
+
 class ExtractedTransaction(BaseModel):
     model_config = ConfigDict(extra="ignore")
     type: Literal["expense", "income"] = Field(..., description="'expense' para gastos/despesas, 'income' para receitas/ganhos/entradas/salário")
     amount: float = Field(..., description="Valor numérico monetário em reais (ex: 45.90)")
-    description: str = Field(..., description="Descrição resumida da despesa ou receita (ex: 'Almoço no restaurante', 'Salário mensal')")
-    category_name: str = Field("Outros", description="Nome da categoria sugerida (ex: Alimentação, Transporte, Saúde, Moradia, Salário, Lazer, etc.)")
+    description: str = Field(..., description="Descrição resumida da despesa ou receita (ex: 'Supermercado CompreBem', 'Almoço no restaurante', 'Salário mensal')")
+    category_name: str = Field("Outros", description="Nome da categoria sugerida (ex: Alimentação, Supermercado, Transporte, Saúde, Moradia, Salário, Lazer, etc.)")
     payment_method: str = Field("Cartão de Crédito", description="Forma de pagamento inferida ou informada: Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, etc.")
     date_offset_days: int = Field(0, description="Diferença de dias em relação a hoje: 0 para hoje, -1 para ontem, -2 para anteontem, etc.")
+    items: List[ExtractedTransactionItem] = Field(default_factory=list, description="Lista detalhada item a item dos produtos comprados no cupom/nota fiscal, se houver (ex: itens de mercado, farmácia, etc.)")
+
 
 class ExtractedReminder(BaseModel):
     model_config = ConfigDict(extra="ignore")

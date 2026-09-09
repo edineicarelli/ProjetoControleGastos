@@ -5,6 +5,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initCharts();
     initRealtimeSync();
+    loadMarketAnalyticsData();
 
     if (localStorage.getItem('open_workspace_settings_modal') === 'true') {
         openWorkspaceSettingsModal();
@@ -54,7 +55,12 @@ function switchTab(tabId) {
         setTimeout(() => {
             initCharts();
         }, 50);
+    } else if (tabId === 'tab-items-analytics') {
+        setTimeout(() => {
+            loadMarketAnalyticsData();
+        }, 50);
     }
+
 }
 
 function initTabs() {
@@ -1637,4 +1643,1102 @@ function submitCustomReport(e) {
     closeReportExportModal();
     window.location.href = downloadUrl;
 }
+
+/* ==========================================================================
+   Gestão de Lançamentos, Upload de Comprovantes & Detalhamento de Itens
+   ========================================================================== */
+
+let currentTxItems = [];
+let isIncludeItemsMode = true;
+let currentViewingTxId = null;
+let allItemsHistoryCache = [];
+
+function openTransactionModal(defaultType = 'expense') {
+    const modal = document.getElementById('transactionModal');
+    if (!modal) return;
+
+    // Reset Form
+    const form = document.getElementById('transactionForm');
+    if (form) form.reset();
+
+    const typeSelect = document.getElementById('txType');
+    if (typeSelect) typeSelect.value = defaultType;
+
+    const dateInput = document.getElementById('txDate');
+    if (dateInput) {
+        const today = new Date().toISOString().split('T')[0];
+        dateInput.value = today;
+    }
+
+    const receiptUrlInput = document.getElementById('txReceiptUrl');
+    if (receiptUrlInput) receiptUrlInput.value = '';
+
+    const previewPill = document.getElementById('receiptPreviewPill');
+    if (previewPill) previewPill.style.display = 'none';
+
+    const uploadLoader = document.getElementById('uploadLoader');
+    if (uploadLoader) uploadLoader.classList.remove('active');
+
+    // Reset items
+    currentTxItems = [];
+    setItemsMode(true);
+    renderItemsTable();
+
+    modal.style.display = 'flex';
+    modal.classList.add('show', 'active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeTransactionModal() {
+    const modal = document.getElementById('transactionModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.classList.remove('show', 'active');
+    document.body.style.overflow = '';
+}
+
+
+function handleDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropzone = document.getElementById('receiptDropzone');
+    if (dropzone) dropzone.classList.add('dragover');
+}
+
+function handleDragLeave(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropzone = document.getElementById('receiptDropzone');
+    if (dropzone) dropzone.classList.remove('dragover');
+}
+
+function handleDropFile(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const dropzone = document.getElementById('receiptDropzone');
+    if (dropzone) dropzone.classList.remove('dragover');
+
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) {
+        uploadAndAnalyzeReceipt(files[0]);
+    }
+}
+
+function handleFileSelected(e) {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+        uploadAndAnalyzeReceipt(files[0]);
+    }
+}
+
+async function uploadAndAnalyzeReceipt(file) {
+    if (!file) return;
+
+    const dropzone = document.getElementById('receiptDropzone');
+    const uploadLoader = document.getElementById('uploadLoader');
+    const previewPill = document.getElementById('receiptPreviewPill');
+    const fileNameSpan = document.getElementById('receiptFileName');
+    const workspaceId = document.getElementById('txWorkspaceId')?.value || 1;
+    const userId = document.getElementById('txUserId')?.value || 1;
+
+    if (uploadLoader) uploadLoader.classList.add('active');
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('workspace_id', workspaceId);
+    if (userId) formData.append('user_id', userId);
+
+    try {
+        const response = await fetch('/api/receipts/analyze', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        if (uploadLoader) uploadLoader.classList.remove('active');
+
+        if (data.receipt_url) {
+            const receiptUrlInput = document.getElementById('txReceiptUrl');
+            if (receiptUrlInput) receiptUrlInput.value = data.receipt_url;
+        }
+
+        if (previewPill && fileNameSpan) {
+            fileNameSpan.textContent = file.name;
+            previewPill.style.display = 'inline-flex';
+        }
+
+        // Preenche campos da transação
+        if (data.amount !== undefined && data.amount > 0) {
+            const amountInput = document.getElementById('txAmount');
+            if (amountInput) amountInput.value = parseFloat(data.amount).toFixed(2);
+        }
+
+        if (data.description) {
+            const descInput = document.getElementById('txDescription');
+            if (descInput) descInput.value = data.description;
+        }
+
+        if (data.type) {
+            const typeSelect = document.getElementById('txType');
+            if (typeSelect) typeSelect.value = data.type;
+        }
+
+        if (data.category_name) {
+            const catInput = document.getElementById('txCategory');
+            if (catInput) catInput.value = data.category_name;
+        }
+
+        if (data.date) {
+            const dateInput = document.getElementById('txDate');
+            if (dateInput) dateInput.value = data.date;
+        }
+
+        // Processa itens extraídos
+        if (data.items && Array.isArray(data.items) && data.items.length > 0) {
+            currentTxItems = data.items.map(it => ({
+                name: it.name || '',
+                quantity: parseFloat(it.quantity || 1),
+                unit: it.unit || 'un',
+                unit_price: parseFloat(it.unit_price || 0),
+                total_price: parseFloat(it.total_price || 0),
+                category: it.category || 'Geral'
+            }));
+            setItemsMode(true);
+            renderItemsTable();
+        } else {
+            // Se nenhum item foi discriminado (ex: comprovante de Pix simples), mantém modo Total
+            if (currentTxItems.length === 0) {
+                setItemsMode(false);
+            }
+        }
+
+    } catch (err) {
+        if (uploadLoader) uploadLoader.classList.remove('active');
+        console.error('Erro ao analisar comprovante:', err);
+        alert('Não foi possível analisar o comprovante automaticamente. Preencha os dados manualmente.');
+    }
+}
+
+function clearUploadedReceipt(e) {
+    if (e) e.stopPropagation();
+    const fileInput = document.getElementById('receiptFileInput');
+    if (fileInput) fileInput.value = '';
+    const receiptUrlInput = document.getElementById('txReceiptUrl');
+    if (receiptUrlInput) receiptUrlInput.value = '';
+    const previewPill = document.getElementById('receiptPreviewPill');
+    if (previewPill) previewPill.style.display = 'none';
+}
+
+function setItemsMode(includeItems) {
+    isIncludeItemsMode = includeItems;
+    const btnItems = document.getElementById('btnModeItems');
+    const btnTotal = document.getElementById('btnModeTotalOnly');
+    const container = document.getElementById('itemsEditorContainer');
+
+    if (btnItems && btnTotal) {
+        if (includeItems) {
+            btnItems.classList.add('active');
+            btnTotal.classList.remove('active');
+        } else {
+            btnItems.classList.remove('active');
+            btnTotal.classList.add('active');
+        }
+    }
+
+    if (container) {
+        container.style.display = includeItems ? 'block' : 'none';
+    }
+
+    if (includeItems && currentTxItems.length === 0) {
+        addNewEmptyItemRow();
+    }
+}
+
+function renderItemsTable() {
+    const tbody = document.getElementById('txItemsTableBody');
+    if (!tbody) return;
+
+    if (currentTxItems.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 1.25rem;">
+                    Nenhum produto adicionado. Clique em "+ Adicionar Produto Manualmente" ou carregue um comprovante/cupom fiscal.
+                </td>
+            </tr>
+        `;
+        updateItemsSummaryBar();
+        return;
+    }
+
+    const categoriesOptions = [
+        'Mercearia', 'Carnes & Aves', 'Hortifruti', 'Laticínios & Frios', 
+        'Bebidas', 'Padaria & Sobremesas', 'Limpeza', 'Higiene & Beleza', 
+        'Farmácia & Saúde', 'Pet Shop', 'Utilidades', 'Geral'
+    ];
+
+    tbody.innerHTML = currentTxItems.map((item, idx) => `
+        <tr id="tx-item-row-${idx}">
+            <td>
+                <input type="text" value="${escapeHtml(item.name || '')}" placeholder="Ex: Arroz 5kg" oninput="updateItemField(${idx}, 'name', this.value)" required>
+            </td>
+            <td>
+                <input type="number" step="0.01" min="0.01" value="${item.quantity}" oninput="updateItemField(${idx}, 'quantity', this.value)" style="text-align: center;">
+            </td>
+            <td>
+                <select onchange="updateItemField(${idx}, 'unit', this.value)">
+                    <option value="un" ${item.unit === 'un' ? 'selected' : ''}>un</option>
+                    <option value="kg" ${item.unit === 'kg' ? 'selected' : ''}>kg</option>
+                    <option value="g" ${item.unit === 'g' ? 'selected' : ''}>g</option>
+                    <option value="l" ${item.unit === 'l' ? 'selected' : ''}>L</option>
+                    <option value="pct" ${item.unit === 'pct' ? 'selected' : ''}>pct</option>
+                    <option value="cx" ${item.unit === 'cx' ? 'selected' : ''}>cx</option>
+                    <option value="dz" ${item.unit === 'dz' ? 'selected' : ''}>dz</option>
+                </select>
+            </td>
+            <td>
+                <input type="number" step="0.01" min="0" value="${item.unit_price ? parseFloat(item.unit_price).toFixed(2) : '0.00'}" oninput="updateItemField(${idx}, 'unit_price', this.value)" style="text-align: right;">
+            </td>
+            <td>
+                <input type="number" step="0.01" min="0" value="${item.total_price ? parseFloat(item.total_price).toFixed(2) : '0.00'}" oninput="updateItemField(${idx}, 'total_price', this.value)" style="text-align: right; font-weight: 600;">
+            </td>
+            <td>
+                <select onchange="updateItemField(${idx}, 'category', this.value)">
+                    ${categoriesOptions.map(cat => `<option value="${cat}" ${item.category === cat ? 'selected' : ''}>${cat}</option>`).join('')}
+                </select>
+            </td>
+            <td style="text-align: center;">
+                <button type="button" class="btn-icon-danger" onclick="removeItemRow(${idx})" title="Remover item" style="padding: 0.2rem 0.4rem; font-size: 0.85rem;">✕</button>
+            </td>
+        </tr>
+    `).join('');
+
+    updateItemsSummaryBar();
+}
+
+function addNewEmptyItemRow() {
+    currentTxItems.push({
+        name: '',
+        quantity: 1.0,
+        unit: 'un',
+        unit_price: 0.0,
+        total_price: 0.0,
+        category: 'Geral'
+    });
+    renderItemsTable();
+}
+
+function removeItemRow(idx) {
+    if (idx >= 0 && idx < currentTxItems.length) {
+        currentTxItems.splice(idx, 1);
+        renderItemsTable();
+    }
+}
+
+function detectSmartUnit(name) {
+    if (!name) return null;
+    const n = name.toLowerCase().trim();
+    const kgWords = [
+        'pao frances', 'pão francês', 'pao de sal', 'pão de sal', 'pao de queijo', 'pão de queijo', 'chipa',
+        'queijo', 'mussarela', 'muçarela', 'presunto', 'mortadela', 'salame', 'peito de peru',
+        'picanha', 'alcatra', 'maminha', 'contrafile', 'patinho', 'acem', 'acém', 'carne moida', 'carne moída',
+        'costela', 'frango', 'peito de frango', 'linguica', 'linguiça', 'bacon', 'bisteca', 'peixe', 'salmao', 'tilapia',
+        'tomate', 'banana', 'batata', 'cebola', 'alho', 'maca', 'maçã', 'laranja', 'cenoura', 'melancia',
+        'abobrinha', 'berinjela', 'chuchu', 'beterraba', 'pimentao', 'uva', 'manga', 'limao', 'limão', 'mandioca'
+    ];
+    if (kgWords.some(w => n.includes(w))) return 'kg';
+    if (['arroz', 'feijao', 'feijão', 'cafe', 'café', 'acucar', 'açúcar', 'farinha', 'macarrao', 'macarrão', 'biscoito'].some(w => n.includes(w))) return 'pct';
+    if (['sabao em po', 'sabão em pó', 'bombom', 'remedio', 'remédio'].some(w => n.includes(w))) return 'cx';
+    return null;
+}
+
+function updateItemField(idx, field, value) {
+    if (!currentTxItems[idx]) return;
+
+    if (field === 'name') {
+        currentTxItems[idx].name = value;
+        // Auto-detecta unidade típica (ex: Pão Francês -> KG)
+        const smartUnit = detectSmartUnit(value);
+        if (smartUnit && currentTxItems[idx].unit === 'un') {
+            currentTxItems[idx].unit = smartUnit;
+            const unitSelect = document.querySelector(`#tx-item-row-${idx} select[onchange*="unit"]`);
+            if (unitSelect) unitSelect.value = smartUnit;
+        }
+    } else if (field === 'quantity') {
+        const qty = parseFloat(value) || 0;
+        currentTxItems[idx].quantity = qty;
+        if (currentTxItems[idx].unit_price > 0) {
+            currentTxItems[idx].total_price = parseFloat((qty * currentTxItems[idx].unit_price).toFixed(2));
+            const rowTotalInput = document.querySelector(`#tx-item-row-${idx} input[oninput*="total_price"]`);
+            if (rowTotalInput) rowTotalInput.value = currentTxItems[idx].total_price.toFixed(2);
+        }
+    } else if (field === 'unit_price') {
+        const unitP = parseFloat(value) || 0;
+        currentTxItems[idx].unit_price = unitP;
+        currentTxItems[idx].total_price = parseFloat(((currentTxItems[idx].quantity || 1) * unitP).toFixed(2));
+        const rowTotalInput = document.querySelector(`#tx-item-row-${idx} input[oninput*="total_price"]`);
+        if (rowTotalInput) rowTotalInput.value = currentTxItems[idx].total_price.toFixed(2);
+    } else if (field === 'total_price') {
+        const totalP = parseFloat(value) || 0;
+        currentTxItems[idx].total_price = totalP;
+        const qty = currentTxItems[idx].quantity || 1;
+        if (qty > 0) {
+            currentTxItems[idx].unit_price = parseFloat((totalP / qty).toFixed(2));
+            const rowUnitInput = document.querySelector(`#tx-item-row-${idx} input[oninput*="unit_price"]`);
+            if (rowUnitInput) rowUnitInput.value = currentTxItems[idx].unit_price.toFixed(2);
+        }
+    } else {
+        currentTxItems[idx][field] = value;
+    }
+
+    updateItemsSummaryBar();
+}
+
+function updateItemsSummaryBar() {
+    const countSpan = document.getElementById('itemsCountLabel');
+    const sumSpan = document.getElementById('itemsSumLabel');
+    const amountInput = document.getElementById('txAmount');
+
+    const totalSum = currentTxItems.reduce((acc, it) => acc + (parseFloat(it.total_price) || 0), 0);
+    const validCount = currentTxItems.filter(it => it.name && it.name.trim()).length;
+
+    if (countSpan) countSpan.textContent = validCount;
+    if (sumSpan) {
+        sumSpan.innerHTML = `Soma dos Itens: <b>${totalSum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</b> (${validCount} produtos)`;
+    }
+
+    // Se o valor total do formulário estiver vazio e tivermos soma de itens, sugere o valor
+    if (amountInput && (!amountInput.value || parseFloat(amountInput.value) === 0) && totalSum > 0) {
+        amountInput.value = totalSum.toFixed(2);
+    }
+}
+
+async function saveTransactionForm(e) {
+    if (e) e.preventDefault();
+
+    const workspaceId = parseInt(document.getElementById('txWorkspaceId')?.value || 1);
+    const userId = parseInt(document.getElementById('txUserId')?.value || 1);
+    const type = document.getElementById('txType')?.value || 'expense';
+    const amount = parseFloat(document.getElementById('txAmount')?.value || 0);
+    const description = document.getElementById('txDescription')?.value?.trim();
+    const categoryName = document.getElementById('txCategory')?.value?.trim() || 'Outros';
+    const accountIdVal = document.getElementById('txAccount')?.value;
+    const accountId = accountIdVal ? parseInt(accountIdVal) : null;
+    const date = document.getElementById('txDate')?.value;
+    const receiptUrl = document.getElementById('txReceiptUrl')?.value || null;
+
+    if (!description) {
+        alert('Por favor, informe a descrição ou nome do estabelecimento.');
+        return;
+    }
+
+    if (isNaN(amount) || amount <= 0) {
+        alert('Por favor, informe um valor válido maior que zero.');
+        return;
+    }
+
+    // Filtra itens vazios
+    const validItems = currentTxItems
+        .filter(it => it.name && it.name.trim())
+        .map(it => ({
+            name: it.name.trim(),
+            quantity: parseFloat(it.quantity) || 1.0,
+            unit: it.unit || 'un',
+            unit_price: parseFloat(it.unit_price) || 0.0,
+            total_price: parseFloat(it.total_price) || 0.0,
+            category: it.category || 'Geral'
+        }));
+
+    const payload = {
+        workspace_id: workspaceId,
+        user_id: userId,
+        type: type,
+        amount: amount,
+        description: description,
+        category_name: categoryName,
+        payment_method: accountId ? 'Conta Bancária' : 'Outro',
+        account_id: accountId,
+        date: date,
+        receipt_url: receiptUrl,
+        include_items: isIncludeItemsMode,
+        items: isIncludeItemsMode ? validItems : null
+    };
+
+    const saveBtn = document.getElementById('btnSaveTx');
+    if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Salvando...';
+    }
+
+    try {
+        const res = await fetch('/api/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (res.ok && data.success) {
+            closeTransactionModal();
+            window.location.reload();
+        } else {
+            alert('Erro ao salvar lançamento: ' + (data.detail || data.error || 'Erro desconhecido'));
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Falha na comunicação com o servidor ao salvar o lançamento.');
+    } finally {
+        if (saveBtn) {
+            saveBtn.disabled = false;
+            saveBtn.textContent = '💾 Salvar Lançamento';
+        }
+    }
+}
+
+async function openTransactionItemsModal(transactionId) {
+    currentViewingTxId = transactionId;
+    const modal = document.getElementById('transactionItemsModal');
+    if (!modal) return;
+
+    const titleEl = document.getElementById('txItemsModalTitle');
+    const subtitleEl = document.getElementById('txItemsModalSubtitle');
+    const amountEl = document.getElementById('txItemsModalAmount');
+    const catEl = document.getElementById('txItemsModalCategory');
+    const dateEl = document.getElementById('txItemsModalDate');
+    const tbody = document.getElementById('txItemsViewTableBody');
+    const countEl = document.getElementById('txItemsViewCount');
+    const totalEl = document.getElementById('txItemsViewTotal');
+
+    if (tbody) {
+        tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">Carregando itens...</td></tr>`;
+    }
+
+    modal.style.display = 'flex';
+    modal.classList.add('show', 'active');
+    document.body.style.overflow = 'hidden';
+
+    try {
+        const res = await fetch(`/api/transactions/${transactionId}/items`);
+        if (!res.ok) throw new Error('Falha ao carregar itens');
+        const data = await res.json();
+
+        if (titleEl) titleEl.textContent = `🛒 ${data.description}`;
+        if (subtitleEl) subtitleEl.textContent = `Lançamento #${data.transaction_id} • ${data.date}`;
+        if (amountEl) amountEl.textContent = Number(data.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        if (catEl) catEl.textContent = data.category;
+        if (dateEl) dateEl.textContent = data.date;
+
+        if (tbody) {
+            if (!data.items || data.items.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: var(--text-muted); padding: 2rem;">Nenhum item discriminado para este lançamento.</td></tr>`;
+            } else {
+                tbody.innerHTML = data.items.map(it => `
+                    <tr>
+                        <td style="font-weight: 600; color: #fff;">${escapeHtml(it.name)}</td>
+                        <td><span class="category-tag">${escapeHtml(it.category || 'Geral')}</span></td>
+                        <td style="text-align: center;">${it.quantity} ${it.unit}</td>
+                        <td style="text-align: right; color: var(--text-secondary);">${Number(it.unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                        <td style="text-align: right; font-weight: 700; color: #fff;">${Number(it.total_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                    </tr>
+                `).join('');
+            }
+        }
+
+        const itemsSum = (data.items || []).reduce((acc, it) => acc + (it.total_price || 0), 0);
+        if (countEl) countEl.textContent = `Total de produtos: ${(data.items || []).length}`;
+        if (totalEl) totalEl.textContent = `Soma dos Itens: ${itemsSum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
+
+    } catch (err) {
+        console.error(err);
+        if (tbody) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #fb7185; padding: 2rem;">Erro ao carregar itens deste lançamento.</td></tr>`;
+        }
+    }
+}
+
+function closeTransactionItemsModal() {
+    const modal = document.getElementById('transactionItemsModal');
+    if (!modal) return;
+    modal.style.display = 'none';
+    modal.classList.remove('show', 'active');
+    document.body.style.overflow = '';
+    currentViewingTxId = null;
+}
+
+
+async function confirmDeleteItemsKeepTotal() {
+    if (!currentViewingTxId) return;
+
+    if (!confirm('Deseja remover a lista de itens discriminados deste lançamento e manter apenas o valor total gasto no extrato?')) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/transactions/${currentViewingTxId}/items`, {
+            method: 'DELETE'
+        });
+
+        if (res.ok) {
+            closeTransactionItemsModal();
+            window.location.reload();
+        } else {
+            alert('Não foi possível remover os itens.');
+        }
+    } catch (err) {
+        console.error(err);
+        alert('Erro ao conectar com o servidor.');
+    }
+}
+
+/* ==========================================================================
+   Central de Análise de Itens & Mercado
+   ========================================================================== */
+
+// ==========================================================================
+// Módulo de Inteligência de Mercado, Rankings & Comparador de Preços
+// ==========================================================================
+let currentItemRankingSort = 'spent';
+let allPriceComparisonsCache = [];
+let priceLookupTimeout = null;
+
+async function loadMarketAnalyticsData() {
+    const workspaceId = window.currentWorkspaceId || 1;
+    const urlParams = new URLSearchParams(window.location.search);
+    const year = window.selectedYear || urlParams.get('year');
+    const month = window.selectedMonth || urlParams.get('month');
+
+    const params = new URLSearchParams();
+    params.set('workspace_id', workspaceId);
+    if (year) params.set('year', year);
+    if (month) params.set('month', month);
+
+    try {
+        // 1. Carrega Estatísticas Básicas e Categorias
+        const [resAnalytics, resRanking, resComparisons] = await Promise.all([
+            fetch(`/api/analytics/items?${params.toString()}`),
+            fetch(`/api/market/ranking?workspace_id=${workspaceId}&sort_by=${currentItemRankingSort}${year ? '&year='+year : ''}${month ? '&month='+month : ''}`),
+            fetch(`/api/market/compare-prices?workspace_id=${workspaceId}`)
+        ]);
+
+        if (resAnalytics.ok) {
+            const data = await resAnalytics.json();
+            const totalItemsEl = document.getElementById('analyticsTotalItems');
+            const totalSpentEl = document.getElementById('analyticsTotalSpent');
+            const totalCategoriesEl = document.getElementById('analyticsTotalCategories');
+
+            if (totalItemsEl) totalItemsEl.textContent = data.total_items_count || 0;
+            if (totalSpentEl) totalSpentEl.textContent = Number(data.total_spent_on_items || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            if (totalCategoriesEl) totalCategoriesEl.textContent = (data.categories || []).length;
+
+            // Categorias
+            const topCatContainer = document.getElementById('topCategoriesList');
+            if (topCatContainer) {
+                const catList = data.categories || [];
+                if (catList.length === 0) {
+                    topCatContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Nenhuma categoria registrada no período.</div>`;
+                } else {
+                    const maxCatSpent = catList[0]?.total_spent || 1;
+                    topCatContainer.innerHTML = catList.map((cat, idx) => {
+                        const pct = Math.min(100, Math.round((cat.total_spent / maxCatSpent) * 100));
+                        const itemsArr = cat.items_list || [];
+                        const itemsListHtml = itemsArr.length > 0 ? `
+                            <div class="tooltip-items-list">
+                                <div style="font-weight: 700; color: #94a3b8; font-size: 0.72rem; margin-bottom: 0.2rem;">🛍️ Itens da Categoria:</div>
+                                ${itemsArr.slice(0, 6).map(it => `
+                                    <div class="tooltip-item-pill">
+                                        <span>${escapeHtml(it.name)} (${it.total_quantity} ${it.unit || ''})</span>
+                                        <span>${Number(it.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                                    </div>
+                                `).join('')}
+                                ${itemsArr.length > 6 ? `<div style="text-align: center; font-size: 0.7rem; color: #94a3b8;">+ ${itemsArr.length - 6} outros itens</div>` : ''}
+                            </div>
+                        ` : '';
+
+                        return `
+                            <div class="ranking-item">
+                                <div class="ranking-header-row">
+                                    <div class="ranking-title-group">
+                                        <div class="ranking-rank" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">🏷️</div>
+                                        <div class="ranking-name" title="${escapeHtml(cat.category)}">${escapeHtml(cat.category)}</div>
+                                    </div>
+                                    <div class="ranking-amount">${Number(cat.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                                </div>
+                                <div class="ranking-bar-wrap">
+                                    <div class="ranking-bar-fill" style="width: ${pct}%; background: linear-gradient(90deg, #10b981, #06b6d4);"></div>
+                                </div>
+                                <div class="ranking-sub-row">
+                                    <span>${cat.items_count} produtos no período</span>
+                                </div>
+                                <div class="ranking-tooltip">
+                                    <div class="tooltip-header">
+                                        <span>🏷️</span>
+                                        <div class="tooltip-title">${escapeHtml(cat.category)}</div>
+                                    </div>
+                                    <div class="tooltip-body">
+                                        <div class="tooltip-row"><span>Total Gasto:</span> <b>${Number(cat.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</b></div>
+                                        <div class="tooltip-row"><span>Produtos Distintos:</span> <b>${cat.items_count} itens</b></div>
+                                        ${itemsListHtml}
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                    }).join('');
+                }
+            }
+
+            // Histórico de Itens
+            allItemsHistoryCache = data.recent_items || [];
+            renderItemsHistoryTable(allItemsHistoryCache);
+        }
+
+        // 2. Renderiza Ranking de Produtos e Mercados
+        if (resRanking.ok) {
+            const rankingData = await resRanking.json();
+            renderTopConsumedItems(rankingData.top_items || []);
+            renderSupermarketRanking(rankingData.top_stores || []);
+
+            const totalStoresEl = document.getElementById('analyticsTotalStores');
+            if (totalStoresEl) totalStoresEl.textContent = (rankingData.top_stores || []).length;
+        }
+
+        // 3. Renderiza Comparador de Preços entre Supermercados
+        if (resComparisons.ok) {
+            const compData = await resComparisons.json();
+            allPriceComparisonsCache = compData.comparisons || [];
+            renderPriceComparisonTable(allPriceComparisonsCache);
+        }
+
+    } catch (err) {
+        console.error('Erro ao carregar inteligência de mercado:', err);
+    }
+}
+
+function switchItemRankingSort(sortBy) {
+    currentItemRankingSort = sortBy;
+    const btnSpent = document.getElementById('btnSortSpent');
+    const btnQty = document.getElementById('btnSortQty');
+    if (btnSpent && btnQty) {
+        if (sortBy === 'spent') {
+            btnSpent.classList.add('active');
+            btnQty.classList.remove('active');
+        } else {
+            btnQty.classList.add('active');
+            btnSpent.classList.remove('active');
+        }
+    }
+    loadMarketAnalyticsData();
+}
+
+function renderTopConsumedItems(items) {
+    const container = document.getElementById('topSpentList');
+    if (!container) return;
+
+    if (!items || items.length === 0) {
+        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Nenhum produto cadastrado no período.</div>`;
+        return;
+    }
+
+    const isSpent = currentItemRankingSort === 'spent';
+    const maxVal = isSpent ? (items[0]?.total_spent || 1) : (items[0]?.total_quantity || 1);
+
+    container.innerHTML = items.slice(0, 10).map((item, idx) => {
+        const val = isSpent ? item.total_spent : item.total_quantity;
+        const pct = Math.min(100, Math.round((val / maxVal) * 100));
+        const rankClass = idx === 0 ? 'top-1' : (idx === 1 ? 'top-2' : (idx === 2 ? 'top-3' : ''));
+        const storesText = item.stores_count > 1 ? `🏪 ${item.stores_count} mercados` : `🏪 ${escapeHtml(item.last_store)}`;
+        const storesListStr = (item.stores_list || []).join(', ') || item.last_store;
+
+        return `
+            <div class="ranking-item">
+                <div class="ranking-header-row">
+                    <div class="ranking-title-group">
+                        <div class="ranking-rank ${rankClass}">${idx + 1}</div>
+                        <div class="ranking-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
+                    </div>
+                    <div class="ranking-amount">${Number(item.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                </div>
+                <div class="ranking-bar-wrap">
+                    <div class="ranking-bar-fill" style="width: ${pct}%;"></div>
+                </div>
+                <div class="ranking-sub-row">
+                    <span>${item.total_quantity} ${item.unit} • Médio ${Number(item.avg_unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                    <span style="color: #a5b4fc; font-weight: 500;">${storesText}</span>
+                </div>
+                <div class="ranking-tooltip">
+                    <div class="tooltip-header">
+                        <span>🛒</span>
+                        <div class="tooltip-title">${escapeHtml(item.name)}</div>
+                    </div>
+                    <div class="tooltip-badge-cat">🏷️ ${escapeHtml(item.category || 'Geral')}</div>
+                    <div class="tooltip-body">
+                        <div class="tooltip-row"><span>Total Gasto:</span> <b>${Number(item.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</b></div>
+                        <div class="tooltip-row"><span>Volume Total:</span> <b>${item.total_quantity} ${item.unit}</b></div>
+                        <div class="tooltip-row"><span>Preço Médio:</span> <b>${Number(item.avg_unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} / ${item.unit}</b></div>
+                        <div class="tooltip-row"><span>Última Compra:</span> <b>${Number(item.last_unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${item.last_purchase_date || 'Recente'})</b></div>
+                        <div class="tooltip-row"><span>Estabelecimento:</span> <b>${escapeHtml(storesListStr)}</b></div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderSupermarketRanking(stores) {
+    const container = document.getElementById('topStoresList');
+    if (!container) return;
+
+    if (!stores || stores.length === 0) {
+        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Nenhum supermercado registrado ainda.</div>`;
+        return;
+    }
+
+    const maxSpent = stores[0]?.total_spent || 1;
+
+    container.innerHTML = stores.map((s, idx) => {
+        const pct = Math.min(100, Math.round((s.total_spent / maxSpent) * 100));
+        const rankClass = idx === 0 ? 'top-1' : (idx === 1 ? 'top-2' : (idx === 2 ? 'top-3' : ''));
+        const itemsArr = s.items_list || [];
+        const itemsListHtml = itemsArr.length > 0 ? `
+            <div class="tooltip-items-list">
+                <div style="font-weight: 700; color: #94a3b8; font-size: 0.72rem; margin-bottom: 0.2rem;">🛍️ Itens Comprados no Local:</div>
+                ${itemsArr.slice(0, 6).map(it => `
+                    <div class="tooltip-item-pill">
+                        <span>${escapeHtml(it.name)} (${it.quantity} ${it.unit || ''})</span>
+                        <span>${Number(it.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                    </div>
+                `).join('')}
+                ${itemsArr.length > 6 ? `<div style="text-align: center; font-size: 0.7rem; color: #94a3b8;">+ ${itemsArr.length - 6} outros itens</div>` : ''}
+            </div>
+        ` : '';
+
+        return `
+            <div class="ranking-item">
+                <div class="ranking-header-row">
+                    <div class="ranking-title-group">
+                        <div class="ranking-rank ${rankClass}">${idx + 1}</div>
+                        <div class="ranking-name" title="${escapeHtml(s.store_name)}">${escapeHtml(s.store_name)}</div>
+                    </div>
+                    <div class="ranking-amount">${Number(s.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                </div>
+                <div class="ranking-bar-wrap">
+                    <div class="ranking-bar-fill" style="width: ${pct}%; background: linear-gradient(90deg, #6366f1, #ec4899);"></div>
+                </div>
+                <div class="ranking-sub-row">
+                    <span>${s.transaction_count} compras • Ticket Médio ${Number(s.avg_ticket).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                    <span style="color: #cbd5e1;">${s.last_visit ? 'Visita: ' + s.last_visit : ''}</span>
+                </div>
+                <div class="ranking-tooltip">
+                    <div class="tooltip-header">
+                        <span>🏪</span>
+                        <div class="tooltip-title">${escapeHtml(s.store_name)}</div>
+                    </div>
+                    <div class="tooltip-body">
+                        <div class="tooltip-row"><span>Total Gasto:</span> <b>${Number(s.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</b></div>
+                        <div class="tooltip-row"><span>Compras Realizadas:</span> <b>${s.transaction_count} (Médio ${Number(s.avg_ticket).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</b></div>
+                        <div class="tooltip-row"><span>Última Visita:</span> <b>${s.last_visit || 'N/A'}</b></div>
+                        ${itemsListHtml}
+                    </div>
+                </div>
+            </div>
+        `;
+    }).join('');
+}
+
+function renderPriceComparisonTable(comparisons) {
+    const tbody = document.getElementById('priceComparisonTableBody');
+    if (!tbody) return;
+
+    if (!comparisons || comparisons.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                    Nenhum produto cadastrado para comparação de preços. Envie cupons de diferentes mercados para analisar!
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = comparisons.map(prod => {
+        const cheapest = prod.cheapest_store;
+        const mostExp = prod.most_expensive_store;
+        const hasDiff = prod.has_multi_store_comparison && mostExp;
+
+        let diffBadge = '';
+        if (hasDiff && prod.diff_pct > 0) {
+            diffBadge = `
+                <div style="text-align: center;">
+                    <span class="badge" style="background: rgba(244, 63, 94, 0.15); color: #fb7185; border: 1px solid rgba(244, 63, 94, 0.35); font-size: 0.76rem; font-weight: 700; padding: 0.2rem 0.5rem;">
+                        +${prod.diff_pct}% (+${Number(prod.price_diff).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
+                    </span>
+                    <small style="display: block; color: #34d399; font-size: 0.72rem; margin-top: 0.15rem;">
+                        Economize no ${escapeHtml(cheapest.store_name)}
+                    </small>
+                </div>
+            `;
+        } else {
+            diffBadge = `<span style="color: var(--text-muted); font-size: 0.78rem;">Preço Único Registrado</span>`;
+        }
+
+        const allStoresBadges = (prod.all_stores || []).map(st => {
+            const isCheap = st.store_name === cheapest?.store_name;
+            const bg = isCheap ? 'rgba(16, 185, 129, 0.12)' : 'rgba(255, 255, 255, 0.05)';
+            const border = isCheap ? 'rgba(16, 185, 129, 0.35)' : 'rgba(255, 255, 255, 0.1)';
+            const txt = isCheap ? '#34d399' : 'var(--text-secondary)';
+            return `
+                <span style="display: inline-flex; align-items: center; gap: 0.3rem; background: ${bg}; border: 1px solid ${border}; color: ${txt}; padding: 0.2rem 0.45rem; border-radius: 4px; font-size: 0.75rem; margin: 0.15rem 0.2rem 0.15rem 0;">
+                    <b>${escapeHtml(st.store_name)}:</b> ${Number(st.latest_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/${st.unit}
+                </span>
+            `;
+        }).join('');
+
+        return `
+            <tr>
+                <td style="font-weight: 700; color: #fff;">
+                    ${escapeHtml(prod.product_name)}
+                </td>
+                <td><span class="category-tag">${escapeHtml(prod.category || 'Geral')}</span></td>
+                <td>
+                    <div style="display: flex; flex-direction: column;">
+                        <strong style="color: #34d399; font-size: 0.95rem;">
+                            ${Number(cheapest.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} <small style="font-weight: normal; color: #a5b4fc;">/${cheapest.unit}</small>
+                        </strong>
+                        <small style="color: var(--text-secondary); font-size: 0.76rem;">
+                            🏪 ${escapeHtml(cheapest.store_name)} (${cheapest.date})
+                        </small>
+                    </div>
+                </td>
+                <td>
+                    ${mostExp ? `
+                        <div style="display: flex; flex-direction: column;">
+                            <strong style="color: #fb7185; font-size: 0.95rem;">
+                                ${Number(mostExp.price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} <small style="font-weight: normal; color: #a5b4fc;">/${mostExp.unit}</small>
+                            </strong>
+                            <small style="color: var(--text-secondary); font-size: 0.76rem;">
+                                🏪 ${escapeHtml(mostExp.store_name)} (${mostExp.date})
+                            </small>
+                        </div>
+                    ` : `<span style="color: var(--text-muted); font-size: 0.8rem;">-</span>`}
+                </td>
+                <td style="text-align: center;">${diffBadge}</td>
+                <td style="max-width: 250px;">
+                    <div style="display: flex; flex-wrap: wrap;">${allStoresBadges}</div>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+function filterPriceComparisonTable(query) {
+    if (!query || !query.trim()) {
+        renderPriceComparisonTable(allPriceComparisonsCache);
+        return;
+    }
+    const q = query.toLowerCase().trim();
+    const filtered = allPriceComparisonsCache.filter(p => 
+        (p.product_name && p.product_name.toLowerCase().includes(q)) ||
+        (p.category && p.category.toLowerCase().includes(q)) ||
+        (p.all_stores && p.all_stores.some(st => st.store_name && st.store_name.toLowerCase().includes(q)))
+    );
+    renderPriceComparisonTable(filtered);
+}
+
+function renderItemsHistoryTable(items) {
+    const tbody = document.getElementById('itemsHistoryTableBody');
+    if (!tbody) return;
+
+    if (!items || items.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
+                    Nenhum item encontrado no histórico deste período.
+                </td>
+            </tr>
+        `;
+        return;
+    }
+
+    tbody.innerHTML = items.map(it => `
+        <tr>
+            <td>${it.transaction_date}</td>
+            <td style="font-weight: 500;">
+                <a href="javascript:void(0)" onclick="openTransactionItemsModal(${it.transaction_id})" style="color: #818cf8; text-decoration: none;">
+                    ${escapeHtml(it.transaction_desc || 'Compra')}
+                </a>
+            </td>
+            <td style="font-weight: 600; color: #fff;">${escapeHtml(it.name)}</td>
+            <td><span class="category-tag">${escapeHtml(it.category || 'Geral')}</span></td>
+            <td style="text-align: center;">${it.quantity} ${it.unit}</td>
+            <td style="text-align: right; color: var(--text-secondary);">${Number(it.unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+            <td style="text-align: right; font-weight: 700; color: #fff;">${Number(it.total_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+        </tr>
+    `).join('');
+}
+
+function filterItemsHistoryTable(query) {
+    if (!query || !query.trim()) {
+        renderItemsHistoryTable(allItemsHistoryCache);
+        return;
+    }
+    const q = query.toLowerCase().trim();
+    const filtered = allItemsHistoryCache.filter(it => 
+        (it.name && it.name.toLowerCase().includes(q)) ||
+        (it.category && it.category.toLowerCase().includes(q)) ||
+        (it.transaction_desc && it.transaction_desc.toLowerCase().includes(q))
+    );
+    renderItemsHistoryTable(filtered);
+}
+
+// ==========================================================================
+// Lista de Mercado com Auto-Estimativa de Preço da Última Compra
+// ==========================================================================
+function debounceLookupPrice(itemName) {
+    if (priceLookupTimeout) clearTimeout(priceLookupTimeout);
+    const hintEl = document.getElementById('shopLastPriceHint');
+    if (!itemName || itemName.trim().length < 2) {
+        if (hintEl) hintEl.style.display = 'none';
+        return;
+    }
+    priceLookupTimeout = setTimeout(() => lookupLastPrice(itemName), 300);
+}
+
+async function lookupLastPrice(itemName) {
+    const hintEl = document.getElementById('shopLastPriceHint');
+    const priceInput = document.getElementById('shopItemPrice');
+    const unitSelect = document.getElementById('shopItemUnit');
+    const wsId = window.currentWorkspaceId || 1;
+
+    try {
+        const res = await fetch(`/api/market/last-price?workspace_id=${wsId}&item_name=${encodeURIComponent(itemName)}`);
+        if (!res.ok) return;
+        const data = await res.json();
+
+        if (data.unit && unitSelect) {
+            unitSelect.value = data.unit;
+        }
+
+        if (data.found && hintEl) {
+            hintEl.style.display = 'block';
+            let tipHtml = data.unit_tip ? `<span style="color:#f59e0b; font-weight:600;">${escapeHtml(data.unit_tip)}</span><br>` : '';
+            hintEl.innerHTML = `${tipHtml}🏷️ <b>Última Compra:</b> ${Number(data.estimated_unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}/${data.unit} no <i>${escapeHtml(data.last_store)}</i> (${data.last_date})`;
+            
+            if (priceInput && (!priceInput.value || Number(priceInput.value) === 0)) {
+                priceInput.value = data.estimated_unit_price;
+            }
+        } else if (data.unit_tip && hintEl) {
+            hintEl.style.display = 'block';
+            hintEl.innerHTML = `<span style="color:#f59e0b; font-weight:600;">${escapeHtml(data.unit_tip)}</span>`;
+        } else if (hintEl) {
+            hintEl.style.display = 'none';
+        }
+    } catch (e) {
+        console.error('Erro ao consultar último preço:', e);
+    }
+}
+
+async function handleAddShoppingItem(event) {
+    event.preventDefault();
+    const wsId = window.currentWorkspaceId || 1;
+    const nameInput = document.getElementById('shopItemName');
+    const qtyInput = document.getElementById('shopItemQty');
+    const unitInput = document.getElementById('shopItemUnit');
+    const priceInput = document.getElementById('shopItemPrice');
+    const hintEl = document.getElementById('shopLastPriceHint');
+
+    if (!nameInput || !nameInput.value.trim()) return;
+
+    const payload = {
+        workspace_id: wsId,
+        name: nameInput.value.trim(),
+        quantity: parseFloat(qtyInput.value) || 1.0,
+        unit: unitInput.value || 'un',
+        estimated_price: parseFloat(priceInput.value) || 0.0
+    };
+
+    try {
+        const res = await fetch('/api/shopping/items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!res.ok) throw new Error('Falha ao adicionar item');
+        const data = await res.json();
+
+        // Limpa formulário
+        nameInput.value = '';
+        qtyInput.value = '1';
+        priceInput.value = '';
+        if (hintEl) hintEl.style.display = 'none';
+
+        // Atualiza total estimado no cabeçalho
+        const totalEstEl = document.getElementById('shoppingTotalEstimated');
+        if (totalEstEl && data.list_total_estimated !== undefined) {
+            totalEstEl.textContent = Number(data.list_total_estimated).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+        }
+
+        // Recarrega lista de compras
+        window.location.reload();
+
+    } catch (err) {
+        console.error(err);
+        alert('Não foi possível adicionar o produto à lista.');
+    }
+}
+
+async function deleteShoppingItem(itemId, name) {
+    if (!confirm(`Deseja remover "${name}" da lista de compras?`)) return;
+
+    try {
+        const res = await fetch(`/api/shopping/items/${itemId}`, { method: 'DELETE' });
+        if (res.ok) {
+            const row = document.getElementById(`shopItemRow_${itemId}`);
+            if (row) row.remove();
+            window.location.reload();
+        } else {
+            alert('Não foi possível remover o item.');
+        }
+    } catch (e) {
+        console.error(e);
+    }
+}
+
+function escapeHtml(str) {
+    if (!str) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+// Global window assignments
+window.openTransactionItemsModal = openTransactionItemsModal;
+window.closeTransactionItemsModal = closeTransactionItemsModal;
+window.openTransactionModal = openTransactionModal;
+window.closeTransactionModal = closeTransactionModal;
+window.setItemsMode = setItemsMode;
+window.addNewEmptyItemRow = addNewEmptyItemRow;
+window.removeItemRow = removeItemRow;
+window.updateItemField = updateItemField;
+window.confirmDeleteItemsKeepTotal = confirmDeleteItemsKeepTotal;
+window.filterItemsHistoryTable = filterItemsHistoryTable;
+window.handleDragOver = handleDragOver;
+window.handleDragLeave = handleDragLeave;
+window.handleDropFile = handleDropFile;
+window.handleFileSelected = handleFileSelected;
+window.clearUploadedReceipt = clearUploadedReceipt;
+window.saveTransactionForm = saveTransactionForm;
+window.loadItemsAnalytics = loadMarketAnalyticsData;
+window.loadMarketAnalyticsData = loadMarketAnalyticsData;
+window.switchItemRankingSort = switchItemRankingSort;
+window.filterPriceComparisonTable = filterPriceComparisonTable;
+window.debounceLookupPrice = debounceLookupPrice;
+window.lookupLastPrice = lookupLastPrice;
+window.handleAddShoppingItem = handleAddShoppingItem;
+window.deleteShoppingItem = deleteShoppingItem;
+
+
+
 

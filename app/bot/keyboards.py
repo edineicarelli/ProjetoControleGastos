@@ -30,8 +30,8 @@ def get_profile_inline_keyboard(current_type: str) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_accounts_selection_keyboard(transaction_id: int, accounts: List[Account], current_account_id: Optional[int] = None) -> InlineKeyboardMarkup:
-    """Gera botões interativos para vincular a transação a uma conta bancária com 1 clique"""
+def get_accounts_selection_keyboard(transaction_id: int, accounts: List[Account], current_account_id: Optional[int] = None, has_items: bool = False, items_count: int = 0) -> InlineKeyboardMarkup:
+    """Gera botões interativos para vincular a transação a uma conta bancária com 1 clique e gerenciar itens"""
     buttons = []
     row = []
     # Apenas contas ativas
@@ -45,6 +45,12 @@ def get_accounts_selection_keyboard(transaction_id: int, accounts: List[Account]
             row = []
     if row:
         buttons.append(row)
+
+    if has_items and items_count > 0:
+        buttons.append([
+            InlineKeyboardButton(f"🛒 Ver Itens ({items_count})", callback_data=f"txitems_{transaction_id}"),
+            InlineKeyboardButton("💰 Manter Só Total", callback_data=f"txdelitems_{transaction_id}")
+        ])
 
     buttons.append([
         InlineKeyboardButton("⚙️ Gerenciar Contas", callback_data="manage_accounts"),
