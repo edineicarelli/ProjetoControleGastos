@@ -12,9 +12,27 @@ services:
       - "80:80"
       - "443:443"
     environment:
-      DOMAIN_NAME: ${DOMAIN_NAME:-localhost}
+      DOMAIN_NAME: ${DOMAIN_NAME:-:80}
+    command: >
+      sh -c '
+        echo "$${DOMAIN_NAME} {" > /tmp/Caddyfile;
+        echo "  encode gzip zstd" >> /tmp/Caddyfile;
+        echo "  reverse_proxy finance-control:8000 {" >> /tmp/Caddyfile;
+        echo "    header_up Host {host}" >> /tmp/Caddyfile;
+        echo "    header_up X-Real-IP {remote_host}" >> /tmp/Caddyfile;
+        echo "    header_up X-Forwarded-For {remote_host}" >> /tmp/Caddyfile;
+        echo "    header_up X-Forwarded-Proto {scheme}" >> /tmp/Caddyfile;
+        echo "  }" >> /tmp/Caddyfile;
+        echo "  header {" >> /tmp/Caddyfile;
+        echo "    Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> /tmp/Caddyfile;
+        echo "    X-Content-Type-Options \"nosniff\"" >> /tmp/Caddyfile;
+        echo "    X-Frame-Options \"SAMEORIGIN\"" >> /tmp/Caddyfile;
+        echo "    Referrer-Policy \"strict-origin-when-cross-origin\"" >> /tmp/Caddyfile;
+        echo "  }" >> /tmp/Caddyfile;
+        echo "}" >> /tmp/Caddyfile;
+        caddy run --config /tmp/Caddyfile --adapter caddyfile
+      '
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
