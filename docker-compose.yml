@@ -2,44 +2,7 @@ version: '3.8'
 
 services:
   # =========================================================================
-  # Proxy Reverso Caddy com HTTPS / TLS Automático (Let's Encrypt / ZeroSSL)
-  # =========================================================================
-  caddy:
-    image: caddy:2-alpine
-    container_name: controle_gastos_caddy
-    restart: unless-stopped
-    ports:
-      - "${CADDY_HTTP_PORT:-8080}:80"
-      - "${CADDY_HTTPS_PORT:-8443}:443"
-    environment:
-      DOMAIN_NAME: ${DOMAIN_NAME:-:80}
-    command: >
-      sh -c '
-        echo "$${DOMAIN_NAME} {" > /tmp/Caddyfile;
-        echo "  encode gzip zstd" >> /tmp/Caddyfile;
-        echo "  reverse_proxy finance-control:8000 {" >> /tmp/Caddyfile;
-        echo "    header_up Host {host}" >> /tmp/Caddyfile;
-        echo "    header_up X-Real-IP {remote_host}" >> /tmp/Caddyfile;
-        echo "    header_up X-Forwarded-For {remote_host}" >> /tmp/Caddyfile;
-        echo "    header_up X-Forwarded-Proto {scheme}" >> /tmp/Caddyfile;
-        echo "  }" >> /tmp/Caddyfile;
-        echo "  header {" >> /tmp/Caddyfile;
-        echo "    Strict-Transport-Security \"max-age=31536000; includeSubDomains; preload\"" >> /tmp/Caddyfile;
-        echo "    X-Content-Type-Options \"nosniff\"" >> /tmp/Caddyfile;
-        echo "    X-Frame-Options \"SAMEORIGIN\"" >> /tmp/Caddyfile;
-        echo "    Referrer-Policy \"strict-origin-when-cross-origin\"" >> /tmp/Caddyfile;
-        echo "  }" >> /tmp/Caddyfile;
-        echo "}" >> /tmp/Caddyfile;
-        caddy run --config /tmp/Caddyfile --adapter caddyfile
-      '
-    volumes:
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - finance-control
-
-  # =========================================================================
-  # Aplicação Principal (FastAPI + Bot Telegram + APScheduler)
+  # Aplicação Principal (FastAPI + Bot Telegram + Web Dashboard)
   # =========================================================================
   finance-control:
     build:
@@ -47,10 +10,7 @@ services:
       dockerfile: Dockerfile
     container_name: controle_gastos_app
     restart: unless-stopped
-    expose:
-      - "8000"
     ports:
-      # Opcional: manter acesso direto na porta 8085 caso necessário para testes locais
       - "${PORT:-8085}:8000"
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
@@ -77,7 +37,3 @@ volumes:
     name: controle_gastos_data
   finance_uploads:
     name: controle_gastos_uploads
-  caddy_data:
-    name: controle_gastos_caddy_data
-  caddy_config:
-    name: controle_gastos_caddy_config
