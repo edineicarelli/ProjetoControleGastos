@@ -1016,6 +1016,27 @@ body {
                 </div>
             </div>
 
+            <!-- Logged User & Role Badge Widget in Sidebar -->
+            <div class="sidebar-user-box" style="margin: 0.25rem 0.85rem 0.75rem; padding: 0.65rem 0.85rem; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--border-subtle); border-radius: var(--radius-md); display: flex; align-items: center; justify-content: space-between;">
+                <div style="display: flex; align-items: center; gap: 0.6rem; overflow: hidden;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; flex-shrink: 0; box-shadow: 0 0 10px rgba(99, 102, 241, 0.3);">
+                        {{ (logged_user.name or logged_user.username or 'U')[0]|upper }}
+                    </div>
+                    <div style="overflow: hidden;">
+                        <div style="font-size: 0.82rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            {{ logged_user.name or logged_user.username }}
+                        </div>
+                        <div style="font-size: 0.68rem; font-weight: 600; text-transform: uppercase; color: {% if is_admin %}#a78bfa{% elif is_moderator %}#34d399{% else %}#fbbf24{% endif %};">
+                            {% if is_admin %}🛡️ Administrador{% elif is_moderator %}⚖️ Moderador{% else %}👁️ Visualizador{% endif %}
+                        </div>
+                    </div>
+                </div>
+                <a href="/logout" style="color: var(--text-muted); text-decoration: none; font-size: 1.1rem; padding: 4px 6px; border-radius: 6px; transition: all 0.2s;" title="Encerrar Sessão (Logout)" onmouseover="this.style.color='#ef4444'; this.style.background='rgba(239,68,68,0.1)'" onmouseout="this.style.color='var(--text-muted)'; this.style.background='transparent'">
+                    🚪
+                </a>
+            </div>
+
+
             <!-- Sidebar Navigation Menu -->
             <div class="sidebar-menu">
                 <!-- Group: Principal -->
@@ -1174,13 +1195,23 @@ body {
 
                 <!-- Topbar Actions (Right) -->
                 <div class="topbar-right" style="display: flex; gap: 0.5rem; align-items: center;">
+                    {% if not is_viewer %}
                     <button class="btn btn-primary btn-sm" onclick="openTransactionModal()" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 700; background: linear-gradient(135deg, #6366f1, #8b5cf6); box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);">
                         ➕ <span>Novo Gasto / Comprovante</span>
                     </button>
                     <button class="btn btn-secondary btn-sm" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.35rem;">
                         🔄 <span>Transferência</span>
                     </button>
+                    {% else %}
+                    <div style="background: rgba(251, 191, 36, 0.12); border: 1px solid rgba(251, 191, 36, 0.35); color: #fbbf24; padding: 0.3rem 0.75rem; border-radius: var(--radius-full); font-size: 0.78rem; font-weight: 600; display: flex; align-items: center; gap: 0.4rem;">
+                        <span>👁️ Modo Somente Leitura</span>
+                    </div>
+                    {% endif %}
+                    <a href="/logout" class="btn btn-secondary btn-sm" style="display: inline-flex; align-items: center; gap: 0.35rem; text-decoration: none;" title="Sair do Sistema">
+                        🚪 <span>Sair</span>
+                    </a>
                 </div>
+
 
             </header>
 
@@ -2412,22 +2443,189 @@ body {
             </div>
 
             <!-- Subtabs Navigation -->
-            <div style="display: flex; gap: 0.5rem; padding: 0.75rem 1.25rem 0; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);">
+            <div style="display: flex; gap: 0.5rem; padding: 0.75rem 1.25rem 0; border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02); overflow-x: auto;">
                 <button type="button" class="btn btn-secondary btn-sm" id="btn-config-profiles" onclick="switchConfigSubTab('profiles')" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-weight: 700; background: var(--primary); color: #fff; border-color: var(--primary);">
                     🏢 Perfis & Contas ({{ user_workspaces|length }})
                 </button>
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-config-system-users" onclick="switchConfigSubTab('system-users')" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-weight: 600;">
+                    👥 Usuários & Permissões ({{ all_system_users|length }})
+                </button>
                 <button type="button" class="btn btn-secondary btn-sm" id="btn-config-users" onclick="switchConfigSubTab('users')" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-weight: 600;">
-                    👥 Usuários & Acessos ({{ workspace_members|length }})
+                    🔗 Membros do Perfil ({{ workspace_members|length }})
                 </button>
+                {% if is_admin %}
                 <button type="button" class="btn btn-secondary btn-sm" id="btn-config-tokens" onclick="switchConfigSubTab('tokens')" style="border-bottom-left-radius: 0; border-bottom-right-radius: 0; font-weight: 600;">
-                    🤖 Tokens & IA (Telegram / Gemini)
+                    🤖 Tokens & IA
                 </button>
+                {% endif %}
             </div>
 
             <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.25rem; padding: 1.25rem;">
                 
+                <!-- SECTION 0: GESTÃO DE USUÁRIOS DO SISTEMA & RBAC (Administrador, Moderador, Visualizador) -->
+                <div id="config-section-system-users" style="display: none; flex-direction: column; gap: 1.25rem;">
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                        <div>
+                            <h4 style="font-size: 0.95rem; font-weight: 700; color: #fff; margin: 0;">👥 Usuários do Sistema & Permissões</h4>
+                            <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 2px;">
+                                Controle de acesso central: Administrador, Moderador e Visualizador.
+                            </p>
+                        </div>
+                        {% if is_admin %}
+                        <button type="button" class="btn btn-primary btn-sm" onclick="toggleNewSystemUserForm()">
+                            ➕ Novo Usuário
+                        </button>
+                        {% endif %}
+                    </div>
+
+                    <!-- Form Novo / Editar Usuário do Sistema (Colapsável) -->
+                    {% if is_admin %}
+                    <form id="systemUserModalForm" onsubmit="saveSystemUserForm(event)" class="glass-card" style="padding: 1.25rem; border-radius: 12px; display: none; background: rgba(99, 102, 241, 0.05); border: 1px solid rgba(99, 102, 241, 0.3);">
+                        <input type="hidden" id="sysUserId" value="">
+                        
+                        <h4 id="sysFormTitle" style="font-size: 1rem; margin-bottom: 0.85rem; color: #a78bfa; font-weight: 700;">➕ Criar Novo Usuário no Sistema</h4>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label for="sysNameInput">Nome Completo *</label>
+                                <input type="text" id="sysNameInput" class="form-control" placeholder="Ex: Lucas Ferreira" required>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="sysUsernameInput">Login / Nome de Usuário *</label>
+                                <input type="text" id="sysUsernameInput" class="form-control" placeholder="Ex: lucas" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label for="sysPhoneInput">Número de Telefone Celular * (com DDD)</label>
+                                <input type="tel" id="sysPhoneInput" class="form-control" placeholder="Ex: (11) 98765-4321" required>
+                                <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 2px;">
+                                    ⚠️ Obrigatório para envio de senha temporária via Telegram quando esquecer a senha.
+                                </small>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="sysRoleInput">Nível de Permissão (Role) *</label>
+                                <select id="sysRoleInput" class="form-control">
+                                    <option value="administrador">🛡️ Administrador (Acesso Total + Gestão de Usuários)</option>
+                                    <option value="moderador">⚖️ Moderador (Lança Gastos, Gerencia Contas e Metas)</option>
+                                    <option value="visualizador" selected>👁️ Visualizador (Apenas Consulta / Somente Leitura)</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group" style="flex: 1;">
+                                <label for="sysTelegramInput">ID do Telegram / Chat ID (Opcional)</label>
+                                <input type="text" id="sysTelegramInput" class="form-control" placeholder="Ex: 137006657 ou @username">
+                                <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 2px;">
+                                    💬 ID numérico para envio direto de senha temporária.
+                                </small>
+                            </div>
+                            <div class="form-group" style="flex: 1;">
+                                <label for="sysPasswordInput">Senha Inicial (Opcional - Padrão: mudar123)</label>
+                                <input type="password" id="sysPasswordInput" class="form-control" placeholder="Deixe em branco para usar padrão">
+                                <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 2px;">
+                                    🔒 O usuário será obrigado a criar sua senha pessoal no 1º acesso.
+                                </small>
+                            </div>
+                        </div>
+
+                        <div class="form-group" style="margin-top: 0.25rem;">
+                            <label style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; color: var(--text-primary); font-size: 0.9rem;" id="sysActiveLabel">
+                                <input type="checkbox" id="sysIsActive" checked style="width: 18px; height: 18px;">
+                                <span>Usuário Ativo no Sistema</span>
+                            </label>
+                        </div>
+
+                        <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 0.75rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" onclick="hideSystemUserForm()">Cancelar</button>
+                            <button type="submit" class="btn btn-primary btn-sm" id="sysSubmitBtn">Salvar Usuário</button>
+                        </div>
+                    </form>
+                    {% endif %}
+
+                    <!-- Barra de Filtros de Status (Todos, Ativos, Inativos) -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; background: rgba(255,255,255,0.02); padding: 0.5rem 0.75rem; border-radius: 10px; border: 1px solid var(--border-subtle);">
+                        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600; display: flex; align-items: center; gap: 0.35rem;">
+                            <span>🔍 Filtrar exibição:</span>
+                        </span>
+                        <div style="display: flex; gap: 6px;">
+                            <button type="button" class="btn-filter-status" id="btnFilterSysAll" onclick="filterSystemUsers('all', this)" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 6px; border: 1px solid transparent; background: rgba(255,255,255,0.04); color: var(--text-muted); cursor: pointer; font-weight: 600; transition: all 0.2s ease;">
+                                👥 Todos
+                            </button>
+                            <button type="button" class="btn-filter-status active" id="btnFilterSysActive" onclick="filterSystemUsers('active', this)" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(99,102,241,0.4); background: var(--primary); color: #fff; cursor: pointer; font-weight: 600; transition: all 0.2s ease;">
+                                🟢 Somente Ativos
+                            </button>
+                            <button type="button" class="btn-filter-status" id="btnFilterSysInactive" onclick="filterSystemUsers('inactive', this)" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 6px; border: 1px solid transparent; background: rgba(255,255,255,0.04); color: var(--text-muted); cursor: pointer; font-weight: 600; transition: all 0.2s ease;">
+                                🔴 Somente Inativos
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Lista de Todos os Usuários do Sistema -->
+                    <div id="systemUsersListContainer" style="display: flex; flex-direction: column; gap: 0.6rem; max-height: 380px; overflow-y: auto;">
+                        {% for usr in all_system_users %}
+                        <div class="overview-item system-user-item" id="system-user-card-{{ usr.id }}" data-user-status="{{ 'active' if usr.is_active else 'inactive' }}" style="padding: 0.85rem 1.15rem; {% if not usr.is_active %}display: none; opacity: 0.6; border: 1px dashed rgba(239,68,68,0.4);{% else %}display: flex;{% endif %} transition: all 0.3s ease;">
+                            <div style="display: flex; align-items: center; gap: 0.85rem;">
+                                <div style="font-size: 1.5rem;">
+                                    {% if usr.system_role == 'administrador' %}🛡️{% elif usr.system_role == 'moderador' %}⚖️{% else %}👁️{% endif %}
+                                </div>
+                                <div>
+                                    <div style="font-weight: 700; color: #fff; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                        {{ usr.name }}
+                                        <span style="font-size: 0.72rem; padding: 2px 7px; border-radius: var(--radius-full); font-weight: 700; 
+                                            {% if usr.system_role == 'administrador' %}background: rgba(99, 102, 241, 0.2); color: #a78bfa; border: 1px solid rgba(99, 102, 241, 0.4);
+                                            {% elif usr.system_role == 'moderador' %}background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);
+                                            {% else %}background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4);{% endif %}">
+                                            {{ usr.system_role|upper }}
+                                        </span>
+                                        {% if usr.is_admin_default %}
+                                        <span style="font-size: 0.68rem; padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.08); color: #cbd5e1;">🔒 Padrão</span>
+                                        {% endif %}
+                                    </div>
+                                    <div style="font-size: 0.78rem; color: var(--text-muted); margin-top: 2px;">
+                                        Login: <b>@{{ usr.username }}</b> &bull; Tel: <b>{{ usr.phone or "Não cadastrado" }}</b>
+                                        {% if usr.telegram_id and usr.telegram_id.isdigit() %}
+                                        &bull; TG: <code>{{ usr.telegram_id }}</code>
+                                        {% endif %}
+                                        <span id="system-user-status-tag-{{ usr.id }}">
+                                            {% if usr.is_active %}
+                                            <span style="color: #34d399; font-weight: 600; margin-left: 6px;">● Ativo</span>
+                                            {% else %}
+                                            <span style="color: #ef4444; font-weight: 600; margin-left: 6px;">● Inativo</span>
+                                            {% endif %}
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {% if is_admin %}
+                            <div style="display: flex; align-items: center; gap: 0.4rem;">
+                                <button type="button" class="btn-action edit" onclick='openEditSystemUserModal({{ usr.id }}, "{{ usr.name|replace("'", "\\'") }}", "{{ usr.username }}", "{{ usr.phone }}", "{{ usr.system_role }}", {{ "true" if usr.is_active else "false" }}, {{ "true" if usr.is_admin_default else "false" }}, "{{ usr.telegram_id if (usr.telegram_id and not usr.telegram_id.startswith("user_") and not usr.telegram_id.startswith("pending_") and usr.telegram_id != "admin_system") else "" }}")' title="Editar dados e permissões">
+                                    ✏️
+                                </button>
+                                {% if not usr.is_admin_default %}
+                                <button type="button" class="btn btn-sm btn-secondary" id="system-user-toggle-btn-{{ usr.id }}" onclick="toggleSystemUserActive({{ usr.id }})" style="font-size: 0.75rem; padding: 0.25rem 0.55rem; transition: all 0.2s ease;" title="{% if usr.is_active %}Inativar Acesso{% else %}Ativar Acesso{% endif %}">
+                                    {% if usr.is_active %}⏸️ Inativar{% else %}▶️ Ativar{% endif %}
+                                </button>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+
+                        <div id="system-users-empty-filter-msg" style="display: none; text-align: center; color: var(--text-muted); padding: 1.5rem; font-size: 0.85rem;">
+                            Nenhum usuário encontrado com o status selecionado.
+                        </div>
+                    </div>
+                </div>
+
+
                 <!-- SECTION 1: PERFIS / WORKSPACES -->
                 <div id="config-section-profiles" style="display: flex; flex-direction: column; gap: 1.25rem;">
+
                     <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
                         <p style="color: var(--text-muted); font-size: 0.875rem; margin: 0;">
                             Gerencie os perfis financeiros do sistema (Pessoal PF, Empresa PJ, Família).
@@ -2595,10 +2793,28 @@ body {
                         </div>
                     </form>
 
+                    <!-- Barra de Filtros de Membros (Todos, Ativos, Inativos) -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem; background: rgba(255,255,255,0.02); padding: 0.5rem 0.75rem; border-radius: 10px; border: 1px solid var(--border-subtle);">
+                        <span style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600; display: flex; align-items: center; gap: 0.35rem;">
+                            <span>🔍 Filtrar exibição:</span>
+                        </span>
+                        <div style="display: flex; gap: 6px;">
+                            <button type="button" class="btn-filter-status" id="btnFilterWsAll" onclick="filterWorkspaceMembers('all', this)" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 6px; border: 1px solid transparent; background: rgba(255,255,255,0.04); color: var(--text-muted); cursor: pointer; font-weight: 600; transition: all 0.2s ease;">
+                                👥 Todos
+                            </button>
+                            <button type="button" class="btn-filter-status active" id="btnFilterWsActive" onclick="filterWorkspaceMembers('active', this)" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(99,102,241,0.4); background: var(--primary); color: #fff; cursor: pointer; font-weight: 600; transition: all 0.2s ease;">
+                                🟢 Somente Ativos
+                            </button>
+                            <button type="button" class="btn-filter-status" id="btnFilterWsInactive" onclick="filterWorkspaceMembers('inactive', this)" style="font-size: 0.76rem; padding: 4px 10px; border-radius: 6px; border: 1px solid transparent; background: rgba(255,255,255,0.04); color: var(--text-muted); cursor: pointer; font-weight: 600; transition: all 0.2s ease;">
+                                🔴 Somente Inativos
+                            </button>
+                        </div>
+                    </div>
+
                     <!-- Lista de Usuários do Workspace -->
-                    <div style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 320px; overflow-y: auto;">
+                    <div id="workspaceMembersListContainer" style="display: flex; flex-direction: column; gap: 0.5rem; max-height: 320px; overflow-y: auto;">
                         {% for mem in workspace_members %}
-                        <div class="overview-item" style="padding: 0.75rem 1rem;">
+                        <div class="overview-item workspace-member-item" id="workspace-member-card-{{ mem.id }}" data-user-status="{{ 'inactive' if mem.is_active == False else 'active' }}" style="padding: 0.75rem 1rem; {% if mem.is_active == False %}display: none; opacity: 0.6; border: 1px dashed rgba(239,68,68,0.4);{% else %}display: flex;{% endif %} transition: all 0.3s ease;">
                             <div style="display: flex; align-items: center; gap: 0.75rem;">
                                 <div style="font-size: 1.4rem;">
                                     {% if mem.role == 'owner' %}👑{% elif mem.role == 'admin' %}🛡️{% else %}👤{% endif %}
@@ -2607,6 +2823,13 @@ body {
                                     <div style="font-weight: 600; color: #fff; font-size: 0.95rem; display: flex; align-items: center; gap: 0.4rem;">
                                         {{ mem.name }}
                                         <span class="category-tag" style="font-size: 0.7rem; padding: 1px 6px;">{{ mem.role|upper }}</span>
+                                        <span id="workspace-member-status-tag-{{ mem.id }}">
+                                            {% if mem.is_active != False %}
+                                            <span style="color: #34d399; font-size: 0.75rem; font-weight: 600; margin-left: 4px;">● Ativo</span>
+                                            {% else %}
+                                            <span style="color: #ef4444; font-size: 0.75rem; font-weight: 600; margin-left: 4px;">● Inativo</span>
+                                            {% endif %}
+                                        </span>
                                     </div>
                                     <div style="font-size: 0.75rem; color: var(--text-muted);">
                                         Telegram: {% if mem.username %}<b>@{{ mem.username }}</b>{% else %}<code>{{ mem.telegram_id }}</code>{% endif %}
@@ -2620,19 +2843,24 @@ body {
                                 <button type="button" class="btn-action edit" onclick='openEditUserForm({{ mem.id }}, "{{ mem.name|replace("'", "\\'") }}", "{{ mem.username or "" }}", "{{ mem.telegram_id }}", "{{ mem.role }}", {{ "true" if (mem.is_active != False) else "false" }})' title="Editar usuário">
                                     ✏️
                                 </button>
-                                <button type="button" class="btn-sm btn-secondary" onclick="toggleUserActive({{ mem.id }})" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" title="Ativar ou Inativar Acesso">
-                                    {% if mem.is_active != False %}⏸️{% else %}▶️{% endif %}
+                                <button type="button" class="btn-sm btn-secondary" id="workspace-member-toggle-btn-{{ mem.id }}" onclick="toggleUserActive({{ mem.id }})" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; transition: all 0.2s ease;" title="Ativar ou Inativar Acesso">
+                                    {% if mem.is_active != False %}⏸️ Inativar{% else %}▶️ Ativar{% endif %}
                                 </button>
                                 <button type="button" class="btn-action delete" onclick="removeWorkspaceUser({{ mem.id }}, '{{ mem.name|replace("'", "\\'") }}')" title="Remover deste perfil" {% if mem.role == 'owner' and workspace_members|length <= 1 %}disabled style="opacity: 0.4; cursor: not-allowed;"{% endif %}>
                                     🗑️
                                 </button>
                             </div>
                         </div>
+
                         {% else %}
                         <div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
                             Nenhum usuário cadastrado neste perfil.
                         </div>
                         {% endfor %}
+
+                        <div id="workspace-members-empty-filter-msg" style="display: none; text-align: center; color: var(--text-muted); padding: 1.5rem; font-size: 0.85rem;">
+                            Nenhum membro encontrado com o status selecionado.
+                        </div>
                     </div>
                 </div>
 

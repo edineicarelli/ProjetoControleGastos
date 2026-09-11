@@ -2,19 +2,16 @@ from telegram import Update
 from telegram.ext import ContextTypes
 from app.database import SessionLocal
 from app.services.finance_service import FinanceService
-from app.bot.keyboards import get_main_reply_keyboard, get_dashboard_link_keyboard
+from app.bot.keyboards import get_main_reply_keyboard
+from app.bot.handlers.auth_helper import get_authenticated_bot_user
 
 async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /start inicial do Bot com suporte a link de convite direto"""
-    user_tg = update.effective_user
+    """Comando /start inicial do Bot com verificação de autenticação por senha"""
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(
-            db=db,
-            telegram_id=str(user_tg.id),
-            name=user_tg.full_name or user_tg.first_name,
-            username=user_tg.username
-        )
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
 
         joined_ws = None
         if context.args and len(context.args) > 0:
@@ -22,10 +19,11 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if arg_code:
                 joined_ws = FinanceService.join_shared_workspace(db, user, arg_code)
 
+        user_tg = update.effective_user
         if joined_ws:
             msg = (
                 f"🎉 *Sucesso! Você ingressou no grupo/perfil:* `{joined_ws.name}`\n\n"
-                f"👤 *Seu Usuário:* {user_tg.first_name} (@{user_tg.username or user_tg.id})\n"
+                f"👤 *Usuário Autenticado:* {user.name or user_tg.first_name}\n"
                 f"📍 *Perfil Ativo:* `{joined_ws.name}` (Tipo: `{joined_ws.type.upper()}`)\n\n"
                 f"A partir de agora, todos os lançamentos que você enviar aqui no bot "
                 f"serão registrados diretamente nesta conta compartilhada e sincronizados no painel Web!\n\n"
@@ -33,8 +31,8 @@ async def start_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         else:
             msg = (
-                f"👋 *Olá, {user_tg.first_name}! Bem-vindo ao seu Assistente Financeiro Inteligente.*\n\n"
-                f"Eu registro e organizo automaticamente suas finanças direto aqui no Telegram com IA!\n\n"
+                f"👋 *Olá, {user.name or user_tg.first_name}! Bem-vindo ao seu Assistente Financeiro Inteligente.*\n\n"
+                f"🔒 *Sessão Autenticada* (Usuário: `{user.username or user.name}`)\n"
                 f"📍 *Perfil Ativo:* `{ws.name}`\n\n"
                 f"💡 *Como usar:*\n"
                 f"• *Texto livre:* _\"Gastei 45 no almoço no cartão\"_\n"
@@ -67,6 +65,9 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔹 `/metas` - Acompanhe suas caixinhas e objetivos de economia.\n"
         f"🔹 `/veiculo` - Histórico de manutenção e alertas de troca de óleo.\n"
         f"🔹 `/mercado` - Checklist interativo de supermercado.\n"
-        f"🔹 `/painel` - Acesse o Dashboard Web com gráficos interativos e exportação."
+        f"🔹 `/painel` - Acesse o Dashboard Web com gráficos interativos e exportação.\n"
+        f"🔹 `/login <usuario> <senha>` - Autentica ou altera usuário conectado.\n"
+        f"🔹 `/sair` ou `/logout` - Bloqueia a sessão do bot no Telegram por segurança."
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
+

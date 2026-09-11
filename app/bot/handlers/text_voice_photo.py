@@ -1,58 +1,147 @@
 import os
 import datetime
-from telegram import Update
+import logging
+from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from app.database import SessionLocal
 from app.config import settings
 from app.services.finance_service import FinanceService
+from app.services.auth_service import AuthService
 from app.services.ai_service import ai_service
 from app.services.reminder_service import ReminderService
 from app.services.goal_service import GoalService
 from app.services.vehicle_service import VehicleService
 from app.services.shopping_service import ShoppingService
-from app.bot.keyboards import get_dashboard_link_keyboard, get_profile_inline_keyboard
+from app.bot.keyboards import get_dashboard_link_keyboard, get_profile_inline_keyboard, get_main_reply_keyboard
+from app.bot.handlers.auth_helper import get_authenticated_bot_user
 from app.utils import format_currency_br, format_number_br
 
+logger = logging.getLogger(__name__)
+
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa mensagens de texto livre com IA"""
+    """Processa mensagens de texto livre com IA após verificar autenticação por senha"""
     text = update.message.text.strip()
     user_tg = update.effective_user
 
-    # Se for um dos botões do Reply Keyboard, redireciona para a função correta
-    if text == "📊 Saldo do Mês":
-        from app.bot.handlers.commands import saldo_handler
-        return await saldo_handler(update, context)
-    elif text == "📑 Últimos Gastos":
-        from app.bot.handlers.commands import extrato_handler
-        return await extrato_handler(update, context)
-    elif text == "💳 Minhas Contas / Bancos":
-        from app.bot.handlers.commands import contas_handler
-        return await contas_handler(update, context)
-    elif text == "👤/🏢 Alternar Perfil":
-        from app.bot.handlers.commands import perfil_handler
-        return await perfil_handler(update, context)
-    elif text == "⏰ Contas a Vencer":
-        from app.bot.handlers.commands import lembretes_handler
-        return await lembretes_handler(update, context)
-    elif text == "🎯 Minhas Metas":
-        from app.bot.handlers.commands import metas_handler
-        return await metas_handler(update, context)
-    elif text == "🛒 Lista de Mercado":
-        from app.bot.handlers.commands import mercado_handler
-        return await mercado_handler(update, context)
-    elif text == "🚗 Manutenção Veículo":
-        from app.bot.handlers.commands import veiculo_handler
-        return await veiculo_handler(update, context)
-    elif text == "🌐 Abrir Painel Web":
-        from app.bot.handlers.commands import painel_handler
-        return await painel_handler(update, context)
-
-    # Feedback imediato de digitação
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
-
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        # 1. Checa autenticação do usuário no Telegram
+        is_auth, user, status_code = AuthService.verify_telegram_auth(db, str(user_tg.id))
+
+        if not is_auth:
+            # Se a conta está inativa
+            if status_code == "inactive":
+                await update.message.reply_text(
+                    "⛔ *Acesso Bloqueado*\n\nSua conta está inativa no sistema. Entre em contato com o administrador.",
+                    parse_mode="Markdown",
+                    reply_markup=ReplyKeyboardRemove()
+                )
+                return
+
+            # Se o usuário já existe mas ainda não autenticou com senha
+            if status_code == "unauthenticated" and user:
+                success, msg, auth_user = AuthService.authenticate_telegram_user(
+                    db=db,
+                    telegram_id=str(user_tg.id),
+                    password=text,
+                    name=user_tg.full_name or user_tg.first_name
+                )
+
+                if success and auth_user:
+                    try:
+                        await update.message.delete()
+                    except Exception:
+                        pass
+
+                    await update.message.reply_text(
+                        f"✅ *Autenticação realizada com sucesso!*\n\n"
+                        f"Bem-vindo(a), *{auth_user.name or auth_user.username}*! Seu acesso ao assistente financeiro no Telegram está liberado.\n\n"
+                        f"💡 _Como posso te ajudar hoje? Envie uma mensagem de gasto ou use o menu abaixo._",
+                        parse_mode="Markdown",
+                        reply_markup=get_main_reply_keyboard()
+                    )
+                    return
+                else:
+                    await update.message.reply_text(
+                        "❌ *Senha incorreta.*\n\n"
+                        "Por favor, digite a mesma senha utilizada para acessar o sistema Web (ou envie `/login usuario senha`).\n\n"
+                        "💡 _Esqueceu a senha? Acesse a tela de login na Web e use 'Esqueci minha senha'._",
+                        parse_mode="Markdown",
+                        reply_markup=ReplyKeyboardRemove()
+                    )
+                    return
+
+            # Se ainda não possui vínculo de conta (unregistered)
+            # Verifica se o texto enviado contém credenciais (ex: "usuario senha")
+            parts = text.split(maxsplit=1)
+            if len(parts) == 2 and not text.startswith("/"):
+                success, msg, auth_user = AuthService.authenticate_telegram_user(
+                    db=db,
+                    telegram_id=str(user_tg.id),
+                    username=parts[0],
+                    password=parts[1],
+                    name=user_tg.full_name or user_tg.first_name
+                )
+                if success and auth_user:
+                    try:
+                        await update.message.delete()
+                    except Exception:
+                        pass
+
+                    await update.message.reply_text(
+                        f"🎉 *Conta vinculada e autenticada com sucesso!*\n\n"
+                        f"Olá, *{auth_user.name or auth_user.username}*! Agora você pode registrar despesas e consultar saldos diretamente por aqui.",
+                        parse_mode="Markdown",
+                        reply_markup=get_main_reply_keyboard()
+                    )
+                    return
+
+            await update.message.reply_text(
+                "🔒 *Acesso Restrito ao Sistema*\n\n"
+                "Para utilizar este assistente, vincule sua conta informando seu **Usuário** e **Senha** cadastrados na Web:\n\n"
+                "👉 `/login seu_usuario sua_senha`\n\n"
+                "_(Exemplo: `/login admin MinhaSenha123`)_",
+                parse_mode="Markdown",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            return
+
+        # 2. Usuário autenticado: processa botões de menu
+        if text == "📊 Saldo do Mês":
+            from app.bot.handlers.commands import saldo_handler
+            return await saldo_handler(update, context)
+        elif text == "📑 Últimos Gastos":
+            from app.bot.handlers.commands import extrato_handler
+            return await extrato_handler(update, context)
+        elif text == "💳 Minhas Contas / Bancos":
+            from app.bot.handlers.commands import contas_handler
+            return await contas_handler(update, context)
+        elif text == "👤/🏢 Alternar Perfil":
+            from app.bot.handlers.commands import perfil_handler
+            return await perfil_handler(update, context)
+        elif text == "⏰ Contas a Vencer":
+            from app.bot.handlers.commands import lembretes_handler
+            return await lembretes_handler(update, context)
+        elif text == "🎯 Minhas Metas":
+            from app.bot.handlers.commands import metas_handler
+            return await metas_handler(update, context)
+        elif text == "🛒 Lista de Mercado":
+            from app.bot.handlers.commands import mercado_handler
+            return await mercado_handler(update, context)
+        elif text == "🚗 Manutenção Veículo":
+            from app.bot.handlers.commands import veiculo_handler
+            return await veiculo_handler(update, context)
+        elif text == "🌐 Abrir Painel Web":
+            from app.bot.handlers.commands import painel_handler
+            return await painel_handler(update, context)
+
+        # Feedback imediato de digitação
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
+
+        if not user.current_workspace:
+            _, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        else:
+            ws = user.current_workspace
         
         user_context = {
             "user_name": user.name,
@@ -308,23 +397,25 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         db.close()
 
 async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa áudios e notas de voz do Telegram"""
+    """Processa áudios e notas de voz do Telegram após verificar autenticação"""
     voice = update.message.voice or update.message.audio
     if not voice:
         return
 
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
-
-    file_obj = await context.bot.get_file(voice.file_id)
-    file_ext = ".ogg" if update.message.voice else ".mp3"
-    file_path = os.path.join(settings.UPLOAD_DIR, "audio", f"voice_{voice.file_id}{file_ext}")
-    await file_obj.download_to_drive(file_path)
-
     db = SessionLocal()
     try:
-        user_tg = update.effective_user
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
 
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="record_voice")
+
+        file_obj = await context.bot.get_file(voice.file_id)
+        file_ext = ".ogg" if update.message.voice else ".mp3"
+        file_path = os.path.join(settings.UPLOAD_DIR, "audio", f"voice_{voice.file_id}{file_ext}")
+        await file_obj.download_to_drive(file_path)
+
+        user_tg = update.effective_user
         user_context = {
             "user_name": user.name,
             "workspace_name": ws.name,
@@ -343,24 +434,26 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         db.close()
 
 async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa fotos de comprovantes e notas fiscais com feedback detalhado de sucesso ou falha"""
+    """Processa fotos de comprovantes e notas fiscais com feedback detalhado após verificar autenticação"""
     photos = update.message.photo
     if not photos:
         return
 
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
-
-    photo = photos[-1]  # Maior resolução
-    file_obj = await context.bot.get_file(photo.file_id)
-    os.makedirs(os.path.join(settings.UPLOAD_DIR, "receipts"), exist_ok=True)
-    file_path = os.path.join(settings.UPLOAD_DIR, "receipts", f"receipt_{photo.file_id}.jpg")
-    await file_obj.download_to_drive(file_path)
-
     db = SessionLocal()
     try:
-        user_tg = update.effective_user
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
 
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
+
+        photo = photos[-1]  # Maior resolução
+        file_obj = await context.bot.get_file(photo.file_id)
+        os.makedirs(os.path.join(settings.UPLOAD_DIR, "receipts"), exist_ok=True)
+        file_path = os.path.join(settings.UPLOAD_DIR, "receipts", f"receipt_{photo.file_id}.jpg")
+        await file_obj.download_to_drive(file_path)
+
+        user_tg = update.effective_user
         user_context = {
             "user_name": user.name,
             "workspace_name": ws.name,
@@ -405,12 +498,10 @@ async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         db.close()
 
 async def document_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Processa arquivos e documentos enviados (PDFs de comprovantes, notas fiscais, imagens como arquivo)"""
+    """Processa arquivos e documentos enviados após verificar autenticação"""
     doc = update.message.document
     if not doc:
         return
-
-    await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_document")
 
     mime_type = doc.mime_type or "application/octet-stream"
     file_name = doc.file_name or f"doc_{doc.file_id}"
@@ -429,17 +520,21 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
         )
         return
 
-    os.makedirs(os.path.join(settings.UPLOAD_DIR, "documents"), exist_ok=True)
-    file_path = os.path.join(settings.UPLOAD_DIR, "documents", f"doc_{doc.file_id}{ext}")
-
-    file_obj = await context.bot.get_file(doc.file_id)
-    await file_obj.download_to_drive(file_path)
-
     db = SessionLocal()
     try:
-        user_tg = update.effective_user
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
 
+        await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_document")
+
+        os.makedirs(os.path.join(settings.UPLOAD_DIR, "documents"), exist_ok=True)
+        file_path = os.path.join(settings.UPLOAD_DIR, "documents", f"doc_{doc.file_id}{ext}")
+
+        file_obj = await context.bot.get_file(doc.file_id)
+        await file_obj.download_to_drive(file_path)
+
+        user_tg = update.effective_user
         caption = update.message.caption.strip() if update.message.caption else ""
         user_context = {
             "user_name": user.name,

@@ -1,8 +1,10 @@
 import logging
 import uuid
+import re
 from typing import Optional, List, Dict, Any
 from sqlalchemy.orm import Session
 from app.models import User, Workspace, WorkspaceMember
+from app.services.auth_service import AuthService
 
 logger = logging.getLogger(__name__)
 
@@ -20,183 +22,236 @@ class UserService:
                     "member_id": m.id,
                     "name": u.name or "Sem Nome",
                     "username": u.username or "",
+                    "phone": u.phone or "",
                     "telegram_id": u.telegram_id or "",
+                    "system_role": u.system_role or "visualizador",
                     "role": m.role or "member",
                     "is_active": u.is_active if u.is_active is not None else True,
+                    "is_admin_default": bool(u.is_admin_default),
+                    "must_change_password": bool(u.must_change_password),
                     "joined_at": m.joined_at,
                     "workspace_id": workspace_id
                 })
         return result
 
     @staticmethod
-    def get_all_users(db: Session) -> List[User]:
-        """Retorna todos os usuários cadastrados no banco de dados"""
-        return db.query(User).order_by(User.id.asc()).all()
+    def get_all_users(db: Session) -> List[Dict[str, Any]]:
+        """Retorna todos os usuários cadastrados no sistema com suas roles e status"""
+        users = db.query(User).order_by(User.id.asc()).all()
+        result = []
+        for u in users:
+            result.append({
+                "id": u.id,
+                "name": u.name or "Sem Nome",
+                "username": u.username or "",
+                "phone": u.phone or "",
+                "telegram_id": u.telegram_id or "",
+                "system_role": u.system_role or "visualizador",
+                "is_active": bool(u.is_active),
+                "is_admin_default": bool(u.is_admin_default),
+                "must_change_password": bool(u.must_change_password),
+                "created_at": u.created_at.strftime("%d/%m/%Y %H:%M") if u.created_at else ""
+            })
+        return result
 
     @staticmethod
-    def add_user_to_workspace(
+    def create_system_user(
         db: Session,
-        workspace_id: int,
         name: str,
+        username: str,
+        phone: str,
+        system_role: str = "visualizador",
+        initial_password: Optional[str] = None,
         telegram_id: Optional[str] = None,
-        username: Optional[str] = None,
-        role: str = "member",
-        is_active: bool = True
+        workspace_id: Optional[int] = None
     ) -> Dict[str, Any]:
-        """Cadastra ou associa um usuário a um perfil/workspace para controle web e Telegram"""
-        name_clean = name.strip() if name else "Novo Usuário"
-        username_clean = username.strip().lstrip("@") if username and username.strip() else None
-        tg_id_clean = str(telegram_id).strip() if telegram_id and str(telegram_id).strip() else None
+        """Cria um novo usuário no sistema com telefone obrigatório e role de acesso"""
+        name_clean = name.strip() if name else ""
+        username_clean = username.strip().lstrip("@").lower() if username else ""
+        phone_clean = phone.strip() if phone else ""
 
-        # Se não informou telegram_id, gera um placeholder temporário único
-        if not tg_id_clean:
-            if username_clean:
-                tg_id_clean = f"pending_user_{username_clean}"
-            else:
-                tg_id_clean = f"user_{uuid.uuid4().hex[:8]}"
+        if not name_clean:
+            raise ValueError("O nome do usuário é obrigatório.")
+        if not username_clean:
+            raise ValueError("O nome de usuário (login) é obrigatório.")
+        if not phone_clean:
+            raise ValueError("O número de telefone é obrigatório para notificações e recuperação de senha.")
 
-        # 1. Procura se já existe um usuário com esse telegram_id ou username
-        user = None
-        if tg_id_clean and not tg_id_clean.startswith("user_"):
-            user = db.query(User).filter(User.telegram_id == tg_id_clean).first()
-        if not user and username_clean:
-            user = db.query(User).filter(User.username.ilike(username_clean)).first()
+        # Validação de unicidade do username
+        existing_user = db.query(User).filter(User.username.ilike(username_clean)).first()
+        if existing_user:
+            raise ValueError(f"O nome de usuário '@{username_clean}' já está em uso.")
 
-        if not user:
-            user = User(
-                telegram_id=tg_id_clean,
-                name=name_clean,
-                username=username_clean,
-                is_active=is_active,
-                current_workspace_id=workspace_id
-            )
-            db.add(user)
-            db.flush()
+        # Validação de role válida
+        valid_roles = ["administrador", "moderador", "visualizador"]
+        role_clean = system_role.lower() if system_role else "visualizador"
+        if role_clean not in valid_roles:
+            role_clean = "visualizador"
+
+        # Senha inicial padrão caso não fornecida
+        plain_pwd = initial_password.strip() if initial_password and initial_password.strip() else "mudar123"
+        pwd_hash = AuthService.hash_password(plain_pwd)
+
+        # Telegram ID placeholder
+        tg_id = telegram_id.strip() if telegram_id and telegram_id.strip() else f"user_{username_clean}_{uuid.uuid4().hex[:6]}"
+
+        # Determina workspace padrão
+        if not workspace_id:
+            ws = db.query(Workspace).first()
+            target_ws_id = ws.id if ws else None
         else:
-            if name_clean:
-                user.name = name_clean
-            if username_clean:
-                user.username = username_clean
-            if tg_id_clean and not tg_id_clean.startswith("user_"):
-                user.telegram_id = tg_id_clean
-            user.is_active = is_active
-            if not user.current_workspace_id:
-                user.current_workspace_id = workspace_id
+            target_ws_id = workspace_id
 
-        # 2. Vincula ao workspace
-        member = db.query(WorkspaceMember).filter(
-            WorkspaceMember.workspace_id == workspace_id,
-            WorkspaceMember.user_id == user.id
-        ).first()
+        new_user = User(
+            name=name_clean,
+            username=username_clean,
+            phone=phone_clean,
+            telegram_id=tg_id,
+            password_hash=pwd_hash,
+            system_role=role_clean,
+            is_admin_default=False,
+            must_change_password=True,  # Obriga a troca no primeiro acesso
+            is_active=True,
+            current_workspace_id=target_ws_id
+        )
+        db.add(new_user)
+        db.flush()
 
-        if not member:
+        # Vincula ao workspace
+        if target_ws_id:
             member = WorkspaceMember(
-                workspace_id=workspace_id,
-                user_id=user.id,
-                role=role or "member"
+                workspace_id=target_ws_id,
+                user_id=new_user.id,
+                role="admin" if role_clean == "administrador" else "member"
             )
             db.add(member)
-        else:
-            member.role = role or member.role
 
         db.commit()
-        db.refresh(user)
-        db.refresh(member)
-
-        try:
-            from app.services.event_bus import event_bus
-            event_bus.notify_workspace_update(workspace_id)
-        except Exception:
-            pass
+        db.refresh(new_user)
 
         return {
             "success": True,
-            "user_id": user.id,
-            "member_id": member.id,
-            "name": user.name,
-            "telegram_id": user.telegram_id,
-            "username": user.username,
-            "role": member.role
+            "id": new_user.id,
+            "name": new_user.name,
+            "username": new_user.username,
+            "phone": new_user.phone,
+            "system_role": new_user.system_role,
+            "must_change_password": new_user.must_change_password,
+            "initial_password": plain_pwd
         }
 
     @staticmethod
-    def update_user_member(
+    def update_system_user(
         db: Session,
-        workspace_id: int,
         user_id: int,
         name: Optional[str] = None,
         username: Optional[str] = None,
+        phone: Optional[str] = None,
+        system_role: Optional[str] = None,
         telegram_id: Optional[str] = None,
-        role: Optional[str] = None,
-        is_active: Optional[bool] = None
-    ) -> Optional[Dict[str, Any]]:
-        """Atualiza os dados de um usuário e suas permissões no workspace"""
+        is_active: Optional[bool] = None,
+        new_password: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Atualiza os dados de um usuário existente com checagem de segurança do admin padrão"""
         user = db.query(User).filter(User.id == user_id).first()
         if not user:
-            return None
+            raise ValueError("Usuário não encontrado.")
 
-        if name is not None:
+        # Segurança: o admin padrão não pode ser inativado nem ter sua role alterada
+        if user.is_admin_default:
+            if is_active is False:
+                raise ValueError("O usuário Administrador Padrão não pode ser inativado.")
+            if system_role and system_role.lower() != "administrador":
+                raise ValueError("A permissão do Administrador Padrão não pode ser alterada.")
+
+        if name is not None and name.strip():
             user.name = name.strip()
-        if username is not None:
-            user.username = username.strip().lstrip("@") if username.strip() else None
+
+        if username is not None and username.strip():
+            u_clean = username.strip().lstrip("@").lower()
+            if u_clean != user.username:
+                existing = db.query(User).filter(User.username.ilike(u_clean), User.id != user.id).first()
+                if existing:
+                    raise ValueError(f"O nome de usuário '@{u_clean}' já está em uso.")
+                # Se não for admin_system padrão, permite mudar username
+                if not user.is_admin_default:
+                    user.username = u_clean
+
+        if phone is not None:
+            if not phone.strip():
+                raise ValueError("O número de telefone é obrigatório.")
+            user.phone = phone.strip()
+
         if telegram_id is not None and telegram_id.strip():
             user.telegram_id = telegram_id.strip()
-        if is_active is not None:
-            user.is_active = is_active
 
-        if role is not None:
-            member = db.query(WorkspaceMember).filter(
-                WorkspaceMember.workspace_id == workspace_id,
-                WorkspaceMember.user_id == user_id
-            ).first()
-            if member:
-                member.role = role
+        if system_role is not None and not user.is_admin_default:
+            role_clean = system_role.lower()
+            if role_clean in ["administrador", "moderador", "visualizador"]:
+                user.system_role = role_clean
+
+        if is_active is not None and not user.is_admin_default:
+            user.is_active = is_active
+            if not is_active:
+                user.is_telegram_authenticated = False
+
+        if new_password and new_password.strip():
+            user.password_hash = AuthService.hash_password(new_password.strip())
+            user.must_change_password = False
+            user.is_telegram_authenticated = False
 
         db.commit()
         db.refresh(user)
 
-        try:
-            from app.services.event_bus import event_bus
-            event_bus.notify_workspace_update(workspace_id)
-        except Exception:
-            pass
-
-        return {"success": True, "user_id": user.id, "name": user.name}
+        return {
+            "success": True,
+            "id": user.id,
+            "name": user.name,
+            "username": user.username,
+            "phone": user.phone,
+            "system_role": user.system_role,
+            "is_active": user.is_active
+        }
 
     @staticmethod
-    def remove_user_from_workspace(db: Session, workspace_id: int, user_id: int) -> bool:
-        """Remove o acesso de um usuário ao workspace"""
-        member = db.query(WorkspaceMember).filter(
-            WorkspaceMember.workspace_id == workspace_id,
-            WorkspaceMember.user_id == user_id
-        ).first()
-
-        if not member:
-            return False
-
-        # Não permite remover se for o único dono do workspace
-        if member.role == "owner":
-            owner_count = db.query(WorkspaceMember).filter(
-                WorkspaceMember.workspace_id == workspace_id,
-                WorkspaceMember.role == "owner"
-            ).count()
-            if owner_count <= 1:
-                raise ValueError("Não é possível remover o único proprietário deste perfil.")
-
-        db.delete(member)
-        
-        # Se era o workspace atual do usuário, redireciona para outro se houver
+    def toggle_user_status(db: Session, user_id: int) -> Dict[str, Any]:
+        """Alterna status entre ativo e inativo com proteção para o admin padrão"""
         user = db.query(User).filter(User.id == user_id).first()
-        if user and user.current_workspace_id == workspace_id:
-            other_m = db.query(WorkspaceMember).filter(WorkspaceMember.user_id == user_id).first()
-            user.current_workspace_id = other_m.workspace_id if other_m else None
+        if not user:
+            raise ValueError("Usuário não encontrado.")
+
+        if user.is_admin_default:
+            raise ValueError("O usuário Administrador Padrão do sistema não pode ser inativado.")
+
+        user.is_active = not bool(user.is_active)
+        if not user.is_active:
+            user.is_telegram_authenticated = False
 
         db.commit()
+        db.refresh(user)
 
-        try:
-            from app.services.event_bus import event_bus
-            event_bus.notify_workspace_update(workspace_id)
-        except Exception:
-            pass
+        return {
+            "success": True,
+            "id": user.id,
+            "is_active": user.is_active,
+            "message": f"Usuário {user.name} {'ativado' if user.is_active else 'inativado'} com sucesso."
+        }
 
+    @staticmethod
+    def change_user_password(db: Session, user_id: int, new_password: str) -> bool:
+        """Altera a senha do usuário e desmarca a flag must_change_password"""
+        user = db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise ValueError("Usuário não encontrado.")
+
+        if not new_password or len(new_password.strip()) < 4:
+            raise ValueError("A nova senha deve ter no mínimo 4 caracteres.")
+
+        user.password_hash = AuthService.hash_password(new_password.strip())
+        user.must_change_password = False
+        user.temp_password = None
+        user.temp_password_expires_at = None
+        user.is_telegram_authenticated = False
+
+        db.commit()
         return True

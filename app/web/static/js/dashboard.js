@@ -1,6 +1,68 @@
 let categoryChartInstance = null;
 let cashflowChartInstance = null;
 
+function showToast(message, type = 'info') {
+    let container = document.getElementById('appToastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'appToastContainer';
+        container.style.cssText = 'position: fixed; top: 24px; right: 24px; z-index: 99999; display: flex; flex-direction: column; gap: 10px; pointer-events: none; max-width: 380px; width: calc(100% - 48px);';
+        document.body.appendChild(container);
+    }
+    
+    const toast = document.createElement('div');
+    toast.style.cssText = `
+        padding: 12px 18px;
+        border-radius: 12px;
+        font-size: 0.88rem;
+        font-weight: 500;
+        color: #fff;
+        backdrop-filter: blur(14px);
+        -webkit-backdrop-filter: blur(14px);
+        box-shadow: 0 10px 30px rgba(0,0,0,0.35);
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        pointer-events: auto;
+        opacity: 0;
+        transform: translateY(-12px) scale(0.96);
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    `;
+    
+    let icon = 'ℹ️';
+    if (type === 'success') {
+        toast.style.background = 'rgba(16, 185, 129, 0.9)';
+        toast.style.border = '1px solid rgba(52, 211, 153, 0.4)';
+        icon = '✅';
+    } else if (type === 'error') {
+        toast.style.background = 'rgba(239, 68, 68, 0.9)';
+        toast.style.border = '1px solid rgba(248, 113, 113, 0.4)';
+        icon = '⚠️';
+    } else if (type === 'warning') {
+        toast.style.background = 'rgba(245, 158, 11, 0.9)';
+        toast.style.border = '1px solid rgba(251, 191, 36, 0.4)';
+        icon = '⏸️';
+    } else {
+        toast.style.background = 'rgba(30, 41, 59, 0.92)';
+        toast.style.border = '1px solid rgba(99, 102, 241, 0.4)';
+        icon = 'ℹ️';
+    }
+    
+    toast.innerHTML = `<span style="font-size: 1.1rem; flex-shrink: 0;">${icon}</span><span style="flex: 1; line-height: 1.4;">${message}</span>`;
+    container.appendChild(toast);
+    
+    requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateY(0) scale(1)';
+    });
+    
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-12px) scale(0.96)';
+        setTimeout(() => toast.remove(), 300);
+    }, 3800);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initTabs();
     initCharts();
@@ -736,15 +798,18 @@ function switchConfigSubTab(tabName) {
     localStorage.setItem('active_config_subtab', tabName);
 
     const secProfiles = document.getElementById('config-section-profiles');
+    const secSystemUsers = document.getElementById('config-section-system-users');
     const secUsers = document.getElementById('config-section-users');
     const secTokens = document.getElementById('config-section-tokens');
     
     const btnProfiles = document.getElementById('btn-config-profiles');
+    const btnSystemUsers = document.getElementById('btn-config-system-users');
     const btnUsers = document.getElementById('btn-config-users');
     const btnTokens = document.getElementById('btn-config-tokens');
 
     // Reset all tabs
     if (secProfiles) secProfiles.style.display = 'none';
+    if (secSystemUsers) secSystemUsers.style.display = 'none';
     if (secUsers) secUsers.style.display = 'none';
     if (secTokens) secTokens.style.display = 'none';
 
@@ -763,21 +828,283 @@ function switchConfigSubTab(tabName) {
     };
 
     inactiveBtn(btnProfiles);
+    inactiveBtn(btnSystemUsers);
     inactiveBtn(btnUsers);
     inactiveBtn(btnTokens);
 
-    if (tabName === 'users') {
+    if (tabName === 'system-users') {
+        if (secSystemUsers) secSystemUsers.style.display = 'flex';
+        activeBtn(btnSystemUsers);
+    } else if (tabName === 'users') {
         if (secUsers) secUsers.style.display = 'flex';
         activeBtn(btnUsers);
     } else if (tabName === 'tokens') {
         if (secTokens) secTokens.style.display = 'flex';
         activeBtn(btnTokens);
-        loadSystemTokens();
+        if (typeof loadSystemTokens === 'function') loadSystemTokens();
     } else {
         if (secProfiles) secProfiles.style.display = 'flex';
         activeBtn(btnProfiles);
     }
 }
+
+/* ========================================================
+   GESTÃO DE USUÁRIOS DO SISTEMA & RBAC (ADMIN, MOD, VIS)
+   ======================================================== */
+function toggleNewSystemUserForm() {
+    const form = document.getElementById('systemUserModalForm');
+    if (form) {
+        if (form.style.display === 'none' || !form.style.display) {
+            document.getElementById('sysFormTitle').textContent = '➕ Criar Novo Usuário no Sistema';
+            document.getElementById('sysSubmitBtn').textContent = 'Salvar Usuário';
+            document.getElementById('sysUserId').value = '';
+            document.getElementById('sysNameInput').value = '';
+            document.getElementById('sysUsernameInput').value = '';
+            document.getElementById('sysPhoneInput').value = '';
+            const tgInp = document.getElementById('sysTelegramInput');
+            if (tgInp) tgInp.value = '';
+            document.getElementById('sysRoleInput').value = 'visualizador';
+            document.getElementById('sysPasswordInput').value = '';
+            document.getElementById('sysPasswordInput').placeholder = 'Deixe em branco para usar padrão (mudar123)';
+            document.getElementById('sysIsActive').checked = true;
+            document.getElementById('sysActiveLabel').style.display = 'flex';
+            document.getElementById('sysRoleInput').disabled = false;
+            form.style.display = 'block';
+            document.getElementById('sysNameInput').focus();
+        } else {
+            form.style.display = 'none';
+        }
+    }
+}
+
+function hideSystemUserForm() {
+    const form = document.getElementById('systemUserModalForm');
+    if (form) form.style.display = 'none';
+}
+
+function openEditSystemUserModal(userId, name, username, phone, systemRole, isActive, isAdminDefault, telegramId = '') {
+    const form = document.getElementById('systemUserModalForm');
+    if (form) {
+        document.getElementById('sysFormTitle').textContent = '✏️ Editar Usuário & Permissões';
+        document.getElementById('sysSubmitBtn').textContent = 'Salvar Alterações';
+        document.getElementById('sysUserId').value = userId;
+        document.getElementById('sysNameInput').value = name;
+        document.getElementById('sysUsernameInput').value = username;
+        document.getElementById('sysPhoneInput').value = phone || '';
+        const tgInp = document.getElementById('sysTelegramInput');
+        if (tgInp) tgInp.value = telegramId || '';
+        document.getElementById('sysRoleInput').value = systemRole || 'visualizador';
+        document.getElementById('sysPasswordInput').value = '';
+        document.getElementById('sysPasswordInput').placeholder = 'Deixe em branco para manter a senha atual';
+        const sysTag = document.getElementById(`system-user-status-tag-${userId}`);
+        if (sysTag) {
+            document.getElementById('sysIsActive').checked = sysTag.textContent.includes('Ativo');
+        } else {
+            document.getElementById('sysIsActive').checked = isActive;
+        }
+
+        // Se for o admin padrão, bloqueia alteração de status e cargo
+        if (isAdminDefault) {
+            document.getElementById('sysRoleInput').disabled = true;
+            document.getElementById('sysActiveLabel').style.display = 'none';
+        } else {
+            document.getElementById('sysRoleInput').disabled = false;
+            document.getElementById('sysActiveLabel').style.display = 'flex';
+        }
+
+        form.style.display = 'block';
+        document.getElementById('sysNameInput').focus();
+    }
+}
+
+async function saveSystemUserForm(e) {
+    e.preventDefault();
+    const btn = document.getElementById('sysSubmitBtn');
+    const userId = document.getElementById('sysUserId').value;
+    const name = document.getElementById('sysNameInput').value.trim();
+    const username = document.getElementById('sysUsernameInput').value.trim();
+    const phone = document.getElementById('sysPhoneInput').value.trim();
+    const telegram_id = document.getElementById('sysTelegramInput')?.value?.trim();
+    const system_role = document.getElementById('sysRoleInput').value;
+    const password = document.getElementById('sysPasswordInput').value.trim();
+    const is_active = document.getElementById('sysIsActive').checked;
+
+    if (!name || !username || !phone) {
+        showToast('Preencha o nome, usuário e telefone celular (obrigatório).', 'warning');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.textContent = 'Salvando...';
+
+    try {
+        let res;
+        if (userId) {
+            // Edição
+            res = await fetch(`/api/admin/users/${userId}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name,
+                    username,
+                    phone,
+                    telegram_id: telegram_id || undefined,
+                    system_role,
+                    is_active,
+                    new_password: password || undefined
+                })
+            });
+        } else {
+            // Criação
+            res = await fetch('/api/admin/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    name,
+                    username,
+                    phone,
+                    telegram_id: telegram_id || undefined,
+                    system_role,
+                    initial_password: password || undefined
+                })
+            });
+        }
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || 'Erro ao salvar usuário.');
+        }
+
+        showToast('Usuário salvo com sucesso!', 'success');
+        localStorage.setItem('active_config_subtab', 'system-users');
+        setTimeout(() => window.location.reload(), 800);
+
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Salvar Usuário';
+    }
+}
+
+let currentSystemUserFilter = 'active';
+let currentWorkspaceMemberFilter = 'active';
+
+function filterSystemUsers(status, btnElement) {
+    currentSystemUserFilter = status;
+    const buttons = document.querySelectorAll('#config-section-system-users .btn-filter-status');
+    buttons.forEach(b => {
+        b.style.background = 'rgba(255,255,255,0.04)';
+        b.style.color = 'var(--text-muted)';
+        b.style.borderColor = 'transparent';
+    });
+    if (btnElement) {
+        btnElement.style.background = 'var(--primary)';
+        btnElement.style.color = '#fff';
+        btnElement.style.borderColor = 'rgba(99,102,241,0.4)';
+    }
+
+    const cards = document.querySelectorAll('#config-section-system-users .system-user-item');
+    let visibleCount = 0;
+    cards.forEach(card => {
+        const userStatus = card.getAttribute('data-user-status') || 'active';
+        if (status === 'all' || userStatus === status) {
+            card.style.display = 'flex';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    const emptyMsg = document.getElementById('system-users-empty-filter-msg');
+    if (emptyMsg) {
+        emptyMsg.style.display = visibleCount === 0 ? 'block' : 'none';
+    }
+}
+
+async function toggleSystemUserActive(userId) {
+    const btn = document.getElementById(`system-user-toggle-btn-${userId}`);
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+    }
+
+    try {
+        const res = await fetch(`/api/admin/users/${userId}/toggle-status`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || 'Erro ao alterar status do usuário.');
+        }
+
+        const isActive = Boolean(data.is_active);
+        const statusStr = isActive ? 'active' : 'inactive';
+
+        // Atualiza imediatamente o card do Usuário do Sistema
+        const card = document.getElementById(`system-user-card-${userId}`);
+        const tag = document.getElementById(`system-user-status-tag-${userId}`);
+        if (card) {
+            card.setAttribute('data-user-status', statusStr);
+            card.style.opacity = isActive ? '1' : '0.6';
+            card.style.border = isActive ? '1px solid var(--border-card, rgba(255, 255, 255, 0.08))' : '1px dashed rgba(239, 68, 68, 0.45)';
+            
+            // Aplica filtro atual
+            if (currentSystemUserFilter !== 'all' && currentSystemUserFilter !== statusStr) {
+                card.style.display = 'none';
+            } else {
+                card.style.display = 'flex';
+            }
+        }
+        if (tag) {
+            tag.innerHTML = isActive 
+                ? '<span style="color: #34d399; font-weight: 600; margin-left: 6px;">● Ativo</span>'
+                : '<span style="color: #ef4444; font-weight: 600; margin-left: 6px;">● Inativo</span>';
+        }
+        if (btn) {
+            btn.innerHTML = isActive ? '⏸️ Inativar' : '▶️ Ativar';
+            btn.title = isActive ? 'Inativar Acesso' : 'Ativar Acesso';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+
+        // Sincroniza também na lista de membros do perfil (se existir na tela)
+        const memCard = document.getElementById(`workspace-member-card-${userId}`);
+        const memTag = document.getElementById(`workspace-member-status-tag-${userId}`);
+        const memBtn = document.getElementById(`workspace-member-toggle-btn-${userId}`);
+        if (memCard) {
+            memCard.setAttribute('data-user-status', statusStr);
+            memCard.style.opacity = isActive ? '1' : '0.6';
+            memCard.style.border = isActive ? '1px solid var(--border-card, rgba(255, 255, 255, 0.08))' : '1px dashed rgba(239, 68, 68, 0.45)';
+            if (currentWorkspaceMemberFilter !== 'all' && currentWorkspaceMemberFilter !== statusStr) {
+                memCard.style.display = 'none';
+            } else {
+                memCard.style.display = 'flex';
+            }
+        }
+        if (memTag) {
+            memTag.innerHTML = isActive 
+                ? '<span style="color: #34d399; font-size: 0.75rem; font-weight: 600; margin-left: 4px;">● Ativo</span>'
+                : '<span style="color: #ef4444; font-size: 0.75rem; font-weight: 600; margin-left: 4px;">● Inativo</span>';
+        }
+        if (memBtn) {
+            memBtn.innerHTML = isActive ? '⏸️ Inativar' : '▶️ Ativar';
+            memBtn.title = isActive ? 'Inativar Acesso' : 'Ativar Acesso';
+        }
+
+        showToast(data.message || (isActive ? 'Usuário ativado com sucesso!' : 'Usuário inativado com sucesso!'), isActive ? 'success' : 'warning');
+
+    } catch (err) {
+        showToast(err.message, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+    }
+}
+
+
 
 /* ========================================================
    GESTÃO DE USUÁRIOS & MEMBROS (WEB & TELEGRAM)
@@ -820,7 +1147,12 @@ function openEditUserForm(userId, name, username, telegramId, role, isActive) {
         }
         document.getElementById('usrTelegramInput').value = tgVal;
         document.getElementById('usrRoleInput').value = role || 'member';
-        document.getElementById('usrIsActive').checked = isActive;
+        const wsTag = document.getElementById(`workspace-member-status-tag-${userId}`);
+        if (wsTag) {
+            document.getElementById('usrIsActive').checked = wsTag.textContent.includes('Ativo');
+        } else {
+            document.getElementById('usrIsActive').checked = isActive;
+        }
         
         form.style.display = 'block';
         document.getElementById('usrNameInput').focus();
@@ -992,19 +1324,113 @@ function closeShareInviteModal() {
     if (modal) modal.style.display = 'none';
 }
 
+function filterWorkspaceMembers(status, btnElement) {
+    currentWorkspaceMemberFilter = status;
+    const buttons = document.querySelectorAll('#config-section-users .btn-filter-status');
+    buttons.forEach(b => {
+        b.style.background = 'rgba(255,255,255,0.04)';
+        b.style.color = 'var(--text-muted)';
+        b.style.borderColor = 'transparent';
+    });
+    if (btnElement) {
+        btnElement.style.background = 'var(--primary)';
+        btnElement.style.color = '#fff';
+        btnElement.style.borderColor = 'rgba(99,102,241,0.4)';
+    }
+
+    const cards = document.querySelectorAll('#config-section-users .workspace-member-item');
+    let visibleCount = 0;
+    cards.forEach(card => {
+        const userStatus = card.getAttribute('data-user-status') || 'active';
+        if (status === 'all' || userStatus === status) {
+            card.style.display = 'flex';
+            visibleCount++;
+        } else {
+            card.style.display = 'none';
+        }
+    });
+
+    const emptyMsg = document.getElementById('workspace-members-empty-filter-msg');
+    if (emptyMsg) {
+        emptyMsg.style.display = visibleCount === 0 ? 'block' : 'none';
+    }
+}
+
 async function toggleUserActive(userId) {
     const workspaceId = window.currentWorkspaceId;
+    const btn = document.getElementById(`workspace-member-toggle-btn-${userId}`);
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+    }
+
     try {
-        localStorage.setItem('open_workspace_settings_modal', 'true');
-        localStorage.setItem('active_config_subtab', 'users');
         const res = await fetch(`/api/users/${userId}/toggle-active?workspace_id=${workspaceId}`, { method: 'POST' });
-        if (res.ok) {
-            window.location.reload();
-        } else {
-            alert('Erro ao alterar status do usuário.');
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || 'Erro ao alterar status do usuário.');
         }
+
+        const isActive = Boolean(data.is_active);
+        const statusStr = isActive ? 'active' : 'inactive';
+
+        // Atualiza imediatamente na lista de membros do perfil
+        const memCard = document.getElementById(`workspace-member-card-${userId}`);
+        const memTag = document.getElementById(`workspace-member-status-tag-${userId}`);
+        if (memCard) {
+            memCard.setAttribute('data-user-status', statusStr);
+            memCard.style.opacity = isActive ? '1' : '0.6';
+            memCard.style.border = isActive ? '1px solid var(--border-card, rgba(255, 255, 255, 0.08))' : '1px dashed rgba(239, 68, 68, 0.45)';
+            if (currentWorkspaceMemberFilter !== 'all' && currentWorkspaceMemberFilter !== statusStr) {
+                memCard.style.display = 'none';
+            } else {
+                memCard.style.display = 'flex';
+            }
+        }
+        if (memTag) {
+            memTag.innerHTML = isActive 
+                ? '<span style="color: #34d399; font-size: 0.75rem; font-weight: 600; margin-left: 4px;">● Ativo</span>'
+                : '<span style="color: #ef4444; font-size: 0.75rem; font-weight: 600; margin-left: 4px;">● Inativo</span>';
+        }
+        if (btn) {
+            btn.innerHTML = isActive ? '⏸️ Inativar' : '▶️ Ativar';
+            btn.title = isActive ? 'Inativar Acesso' : 'Ativar Acesso';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
+
+        // Sincroniza também na aba de Usuários do Sistema
+        const sysCard = document.getElementById(`system-user-card-${userId}`);
+        const sysTag = document.getElementById(`system-user-status-tag-${userId}`);
+        const sysBtn = document.getElementById(`system-user-toggle-btn-${userId}`);
+        if (sysCard) {
+            sysCard.setAttribute('data-user-status', statusStr);
+            sysCard.style.opacity = isActive ? '1' : '0.6';
+            sysCard.style.border = isActive ? '1px solid var(--border-card, rgba(255, 255, 255, 0.08))' : '1px dashed rgba(239, 68, 68, 0.45)';
+            if (currentSystemUserFilter !== 'all' && currentSystemUserFilter !== statusStr) {
+                sysCard.style.display = 'none';
+            } else {
+                sysCard.style.display = 'flex';
+            }
+        }
+        if (sysTag) {
+            sysTag.innerHTML = isActive 
+                ? '<span style="color: #34d399; font-weight: 600; margin-left: 6px;">● Ativo</span>'
+                : '<span style="color: #ef4444; font-weight: 600; margin-left: 6px;">● Inativo</span>';
+        }
+        if (sysBtn) {
+            sysBtn.innerHTML = isActive ? '⏸️ Inativar' : '▶️ Ativar';
+            sysBtn.title = isActive ? 'Inativar Acesso' : 'Ativar Acesso';
+        }
+
+        showToast(data.message || (isActive ? 'Usuário ativado com sucesso!' : 'Usuário inativado com sucesso!'), isActive ? 'success' : 'warning');
+
     } catch (err) {
-        console.error(err);
+        showToast(err.message, 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+        }
     }
 }
 

@@ -1,4 +1,5 @@
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+import logging
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from app.database import SessionLocal
 from app.services.finance_service import FinanceService
@@ -6,15 +7,105 @@ from app.services.reminder_service import ReminderService
 from app.services.goal_service import GoalService
 from app.services.vehicle_service import VehicleService
 from app.services.shopping_service import ShoppingService
-from app.bot.keyboards import get_profile_inline_keyboard, get_dashboard_link_keyboard, get_reminder_action_keyboard, get_reminders_list_keyboard, get_extrato_keyboard
+from app.services.auth_service import AuthService
+from app.bot.keyboards import (
+    get_profile_inline_keyboard,
+    get_dashboard_link_keyboard,
+    get_reminder_action_keyboard,
+    get_reminders_list_keyboard,
+    get_extrato_keyboard,
+    get_main_reply_keyboard
+)
+from app.bot.handlers.auth_helper import get_authenticated_bot_user
 from app.utils import format_currency_br, format_number_br
 
-async def saldo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /saldo ou botão Saldo do Mês"""
+logger = logging.getLogger(__name__)
+
+async def login_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /login <usuario> <senha> ou /login <senha> para autenticação segura"""
+    user_tg = update.effective_user
+    args = context.args or []
+
+    # Tenta excluir a mensagem para não expor a senha no chat
+    try:
+        if update.message:
+            await update.message.delete()
+    except Exception:
+        pass
+
+    if not args:
+        await update.effective_chat.send_message(
+            "🔒 *Instruções de Login no Telegram*\n\n"
+            "Envie no formato:\n"
+            "`/login seu_usuario sua_senha`\n\n"
+            "Ou se sua conta já estiver vinculada ao seu número de telefone, basta enviar:\n"
+            "`/login sua_senha` (ou digitar diretamente a senha no chat).\n\n"
+            "_(Exemplo: `/login admin MinhaSenha123`)_",
+            parse_mode="Markdown"
+        )
+        return
+
+    username = None
+    password = None
+
+    if len(args) == 1:
+        password = args[0].strip()
+    elif len(args) >= 2:
+        username = args[0].strip()
+        password = " ".join(args[1:]).strip()
+
+    db = SessionLocal()
+    try:
+        success, msg, user = AuthService.authenticate_telegram_user(
+            db=db,
+            telegram_id=str(user_tg.id),
+            password=password,
+            username=username,
+            name=user_tg.full_name or user_tg.first_name
+        )
+
+        if success and user:
+            reply_msg = (
+                f"🎉 *Autenticação Concluída com Sucesso!*\n\n"
+                f"Olá, *{user.name or user.username}*! Seu acesso ao assistente financeiro no Telegram está liberado.\n\n"
+                f"💡 _Envie uma mensagem de texto, grave um áudio ou use o menu abaixo para começar._"
+            )
+            await update.effective_chat.send_message(
+                reply_msg,
+                parse_mode="Markdown",
+                reply_markup=get_main_reply_keyboard()
+            )
+        else:
+            await update.effective_chat.send_message(
+                f"{msg}\n\n💡 _Dica: Use a senha exata cadastrada no painel Web._",
+                parse_mode="Markdown"
+            )
+    finally:
+        db.close()
+
+async def logout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /sair ou /logout para bloquear o acesso do Telegram"""
     user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        AuthService.logout_telegram_user(db, str(user_tg.id))
+        await update.effective_chat.send_message(
+            "🔒 *Sessão Bloqueada no Telegram*\n\n"
+            "Você encerrou sua sessão com sucesso. Para voltar a utilizar o assistente, digite sua senha de acesso ou envie `/login usuario senha`.",
+            parse_mode="Markdown",
+            reply_markup=ReplyKeyboardRemove()
+        )
+    finally:
+        db.close()
+
+async def saldo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /saldo ou botão Saldo do Mês"""
+    db = SessionLocal()
+    try:
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         summary = FinanceService.get_monthly_summary(db, ws.id)
 
         cat_lines = ""
@@ -40,6 +131,7 @@ async def saldo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         msg += f"_{summary['transaction_count']} movimentações registradas neste mês._"
 
+        user_tg = update.effective_user
         await update.message.reply_text(
             msg,
             parse_mode="Markdown",
@@ -50,10 +142,12 @@ async def saldo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def extrato_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /extrato ou botão Últimos Gastos"""
-    user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id))
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         from app.models import Transaction
         txs = db.query(Transaction).filter(Transaction.workspace_id == ws.id).order_by(Transaction.transaction_date.desc()).limit(8).all()
 
@@ -74,10 +168,12 @@ async def extrato_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def perfil_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /perfil para alternar PF / PJ / Família"""
-    user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id))
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         msg = (
             f"👤 *Gestão de Perfis & Contas*\n\n"
             f"Atualmente você está lançando em:\n"
@@ -95,10 +191,12 @@ async def perfil_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def lembretes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /lembretes para ver contas a pagar/receber"""
-    user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id))
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         reminders = ReminderService.get_upcoming_reminders(db, ws.id)
 
         if not reminders:
@@ -133,10 +231,12 @@ async def lembretes_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def metas_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /metas para ver objetivos financeiros"""
-    user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id))
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         from app.models import Goal
         goals = db.query(Goal).filter(Goal.workspace_id == ws.id).all()
 
@@ -165,10 +265,12 @@ async def metas_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def veiculo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /veiculo para controle veicular"""
-    user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id))
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         vehicle = VehicleService.get_or_create_vehicle(db, ws.id)
         summary = VehicleService.get_vehicle_summary(db, vehicle.id)
 
@@ -193,10 +295,12 @@ async def veiculo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def mercado_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /mercado para lista de compras"""
-    user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id))
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         s_list = ShoppingService.get_or_create_active_list(db, ws.id)
 
         if not s_list.items:
@@ -228,23 +332,33 @@ async def mercado_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def painel_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /painel para abrir o dashboard web"""
-    user_tg = update.effective_user
-    msg = (
-        f"🌐 *Painel Web & Dashboard Interativo*\n\n"
-        f"Acesse gráficos analíticos detalhados, fluxo de caixa diário, filtros avançados e exportação de planilhas!"
-    )
-    await update.message.reply_text(
-        msg,
-        parse_mode="Markdown",
-        reply_markup=get_dashboard_link_keyboard(str(user_tg.id))
-    )
+    db = SessionLocal()
+    try:
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
+        user_tg = update.effective_user
+        msg = (
+            f"🌐 *Painel Web & Dashboard Interativo*\n\n"
+            f"Acesse gráficos analíticos detalhados, fluxo de caixa diário, filtros avançados e exportação de planilhas!"
+        )
+        await update.message.reply_text(
+            msg,
+            parse_mode="Markdown",
+            reply_markup=get_dashboard_link_keyboard(str(user_tg.id))
+        )
+    finally:
+        db.close()
 
 async def contas_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /contas ou botão Minhas Contas"""
-    user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id))
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         from app.services.account_service import AccountService
         from app.bot.keyboards import get_manage_accounts_keyboard
         accounts = AccountService.get_accounts(db, ws.id)
@@ -270,10 +384,12 @@ async def contas_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def entrar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /entrar <codigo> para ingressar em um grupo/workspace compartilhado"""
-    user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         if not context.args or len(context.args) == 0:
             await update.message.reply_text(
                 "ℹ️ *Como ingressar em um grupo/workspace:*\n\n"
@@ -303,10 +419,12 @@ async def entrar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def zerar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /zerar ou /zerarconta para zerar o valor e lançamentos da conta ou do mês"""
-    user_tg = update.effective_user
     db = SessionLocal()
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
         from app.services.account_service import AccountService
         from app.bot.keyboards import get_zero_selection_keyboard, get_zero_account_confirmation_keyboard
 
@@ -342,4 +460,3 @@ async def zerar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     finally:
         db.close()
-

@@ -13,17 +13,21 @@ from app.bot.keyboards import (
 )
 from app.utils import format_currency_br
 
-async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Gerencia cliques em botões inline do Telegram"""
-    query = update.callback_query
-    await query.answer()
+from app.bot.handlers.auth_helper import get_authenticated_bot_user
 
+async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Gerencia cliques em botões inline do Telegram com verificação de autenticação"""
+    query = update.callback_query
     data = query.data
     user_tg = update.effective_user
     db = SessionLocal()
 
     try:
-        user, ws = FinanceService.get_or_create_user(db, str(user_tg.id), user_tg.full_name, user_tg.username)
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
+        await query.answer()
 
         # 1. Troca de perfis (PF / PJ / Família)
         if data == "switch_pf":

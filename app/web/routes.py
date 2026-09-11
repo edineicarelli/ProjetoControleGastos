@@ -2,8 +2,9 @@ import os
 import json
 import asyncio
 from typing import Optional, List, Dict, Any
-from fastapi import APIRouter, Request, Depends, Query, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form
-from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, RedirectResponse
+from pydantic import BaseModel
+from fastapi import APIRouter, Request, Depends, Query, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, status
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from app.database import get_db
@@ -15,6 +16,14 @@ from app.services.vehicle_service import VehicleService
 from app.services.shopping_service import ShoppingService
 from app.services.account_service import AccountService
 from app.services.user_service import UserService
+from app.services.auth_service import (
+    AuthService,
+    get_current_user_optional,
+    get_current_user_required,
+    require_admin,
+    require_editor,
+    SESSION_COOKIE_NAME
+)
 from app.services.export_service import ExportService
 from app.services.market_analytics_service import MarketAnalyticsService
 from app.services.event_bus import event_bus
@@ -28,6 +37,160 @@ templates = Jinja2Templates(directory=templates_dir)
 templates.env.filters["currency_br"] = format_currency_br
 templates.env.filters["number_br"] = format_number_br
 
+# =========================================================================
+# ROTAS DE AUTENTICAÇÃO, LOGIN E RECUPERAÇÃO DE SENHA
+# =========================================================================
+
+@router.get("/login", response_class=HTMLResponse)
+async def login_page(request: Request, db: Session = Depends(get_db)):
+    """Página de Login com background animado e opções de recuperação"""
+    user = get_current_user_optional(request, db)
+    if user:
+        return RedirectResponse(url="/dashboard")
+    return templates.TemplateResponse(request=request, name="login.html")
+
+@router.get("/logout")
+@router.post("/api/auth/logout")
+async def api_logout():
+    """Encerra a sessão e redireciona para a tela de login"""
+    response = RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
+    response.delete_cookie(key=SESSION_COOKIE_NAME, path="/")
+    return response
+
+@router.post("/api/auth/login")
+async def api_login(request: Request, db: Session = Depends(get_db)):
+    """Valida credenciais (usuário ou telefone + senha) e cria sessão segura"""
+    data = await request.json()
+    username = data.get("username", "").strip()
+    password = data.get("password", "")
+
+    if not username or not password:
+        raise HTTPException(status_code=400, detail="Informe o usuário/telefone e a senha.")
+
+    user = db.query(User).filter(
+        (User.username.ilike(username.lstrip("@"))) | 
+        (User.phone == username) | 
+        (User.telegram_id == username)
+    ).first()
+
+    if not user or not AuthService.verify_password(password, user.password_hash):
+        raise HTTPException(status_code=400, detail="Usuário ou senha inválidos.")
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Usuário inativo. Entre em contato com o administrador.")
+
+    token = AuthService.generate_session_token(user)
+    response = JSONResponse({
+        "success": True,
+        "user_id": user.id,
+        "username": user.username,
+        "name": user.name,
+        "system_role": user.system_role or "visualizador",
+        "must_change_password": bool(user.must_change_password),
+        "redirect_url": "/dashboard"
+    })
+    
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        max_age=7 * 86400,
+        samesite="lax",
+        path="/"
+    )
+    return response
+
+@router.post("/api/auth/forgot-password")
+async def api_forgot_password(request: Request, db: Session = Depends(get_db)):
+    """Gera senha temporária após validação rigorosa de usuário e telefone celular cadastrado"""
+    import re
+
+    def normalize_phone_digits(p: Optional[str]) -> str:
+        if not p:
+            return ""
+        d = re.sub(r"\D", "", str(p))
+        if len(d) in [12, 13] and d.startswith("55"):
+            d = d[2:]
+        return d
+
+    data = await request.json()
+    username = (data.get("username") or data.get("identifier") or "").strip()
+    phone = (data.get("phone") or "").strip()
+
+    if not username:
+        raise HTTPException(status_code=400, detail="Informe seu nome de usuário ou login.")
+
+    if not phone:
+        raise HTTPException(status_code=400, detail="Informe o número de telefone celular cadastrado para validação.")
+
+    user = db.query(User).filter(
+        (User.username.ilike(username.lstrip("@"))) | 
+        (User.telegram_id == username)
+    ).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="Usuário não encontrado no sistema.")
+
+    if not user.is_active:
+        raise HTTPException(status_code=403, detail="Usuário inativo. Entre em contato com o administrador.")
+
+    if not user.phone:
+        raise HTTPException(
+            status_code=400, 
+            detail="Este usuário não possui telefone celular cadastrado no sistema. Contate o administrador."
+        )
+
+    input_phone_digits = normalize_phone_digits(phone)
+    user_phone_digits = normalize_phone_digits(user.phone)
+
+    if not input_phone_digits or input_phone_digits != user_phone_digits:
+        raise HTTPException(
+            status_code=400, 
+            detail="O número de telefone informado não confere com o telefone cadastrado para este usuário."
+        )
+
+    temp_pwd = AuthService.generate_temp_password(8)
+    user.password_hash = AuthService.hash_password(temp_pwd)
+    user.must_change_password = True
+    db.commit()
+
+    success, msg = await AuthService.send_temp_password_telegram(user, temp_pwd, db=db)
+    if not success:
+        raise HTTPException(status_code=400, detail=msg)
+    
+    return {
+        "success": True,
+        "message": f"Identidade confirmada! Uma senha temporária foi enviada no seu Telegram."
+    }
+
+@router.post("/api/auth/change-password")
+async def api_change_password(request: Request, db: Session = Depends(get_db)):
+    """Altera a senha do usuário e conclui a exigência de primeiro acesso"""
+    data = await request.json()
+    user_id = data.get("user_id")
+    new_password = data.get("new_password")
+    
+    if not user_id or not new_password:
+        raise HTTPException(status_code=400, detail="Dados incompletos.")
+
+    try:
+        UserService.change_user_password(db, int(user_id), new_password)
+        user = db.query(User).filter(User.id == int(user_id)).first()
+        token = AuthService.generate_session_token(user)
+
+        response = JSONResponse({"success": True, "message": "Senha atualizada com sucesso!"})
+        response.set_cookie(
+            key=SESSION_COOKIE_NAME,
+            value=token,
+            httponly=True,
+            max_age=7 * 86400,
+            samesite="lax",
+            path="/"
+        )
+        return response
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 @router.get("/join/{invite_code}")
 @router.get("/entrar/{invite_code}")
 async def web_join_workspace(invite_code: str, db: Session = Depends(get_db)):
@@ -36,6 +199,10 @@ async def web_join_workspace(invite_code: str, db: Session = Depends(get_db)):
     if not ws:
         raise HTTPException(status_code=404, detail="Código de convite não encontrado.")
     return RedirectResponse(url=f"https://t.me/carellifinanceiro_bot?start=convite_{ws.invite_code}")
+
+# =========================================================================
+# DASHBOARD PRINCIPAL (PROTEGIDA POR AUTENTICAÇÃO)
+# =========================================================================
 
 @router.get("/", response_class=HTMLResponse)
 @router.get("/dashboard", response_class=HTMLResponse)
@@ -47,21 +214,20 @@ async def dashboard_page(
     month: Optional[int] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Página principal do Dashboard Financeiro / Telegram Mini App com suporte a navegação mensal"""
-    # Se passar user_id (telegram_id), busca o usuário, senão busca o usuário mais recente cadastrado
-    user = None
+    """Página principal do Dashboard Financeiro com verificação de login e RBAC"""
+    # 1. Identifica o usuário logado
+    logged_user = None
     if user_id:
-        user = db.query(User).filter(User.telegram_id == str(user_id)).first()
+        logged_user = db.query(User).filter(User.telegram_id == str(user_id)).first()
     
-    if not user:
-        # Prioriza o usuário real mais recente (não demo/teste)
-        user = db.query(User).filter(User.telegram_id.notin_(['demo_user', 'test_unit'])).order_by(User.id.desc()).first()
-        if not user:
-            user = db.query(User).order_by(User.id.desc()).first()
+    if not logged_user:
+        logged_user = get_current_user_optional(request, db)
 
-    # Se ainda não existir nenhum usuário, cria um usuário padrão
-    if not user:
-        user, ws = FinanceService.get_or_create_user(db, telegram_id="demo_user", name="Demonstração")
+    # Se não houver nenhum usuário autenticado, redireciona para a tela de login
+    if not logged_user:
+        return RedirectResponse(url="/login")
+
+    user = logged_user
     
     # Determina workspace
     if workspace_id:
@@ -71,6 +237,10 @@ async def dashboard_page(
 
     if not current_workspace:
         current_workspace = db.query(Workspace).order_by(Workspace.id.desc()).first()
+
+    # Se ainda não existir nenhum workspace, cria um padrão
+    if not current_workspace:
+        user, current_workspace = FinanceService.get_or_create_user(db, telegram_id=user.telegram_id or "admin_system", name=user.name or "Principal")
 
     # Lista todos os workspaces para fácil alternância no painel
     user_workspaces = db.query(Workspace).order_by(Workspace.id.desc()).all()
@@ -82,6 +252,7 @@ async def dashboard_page(
     summary = FinanceService.get_monthly_summary(db, current_workspace.id, year=clean_year, month=clean_month)
     monthly_transactions = summary["monthly_transactions"]
     workspace_members = UserService.get_workspace_members(db, current_workspace.id)
+    all_system_users = UserService.get_all_users(db)
 
     goals = db.query(Goal).filter(Goal.workspace_id == current_workspace.id).all()
     reminders = ReminderService.get_upcoming_reminders(db, current_workspace.id)
@@ -94,14 +265,26 @@ async def dashboard_page(
 
     categories = db.query(Category).filter(Category.workspace_id == current_workspace.id).order_by(Category.name.asc()).all()
 
+    # Informações de RBAC
+    user_role = (user.system_role or "visualizador").lower()
+    is_admin = (user_role == "administrador")
+    is_moderator = (user_role == "moderador")
+    is_viewer = (user_role == "visualizador")
+
     return templates.TemplateResponse(
         request=request,
         name="dashboard.html",
         context={
             "user": user,
+            "logged_user": user,
+            "user_role": user_role,
+            "is_admin": is_admin,
+            "is_moderator": is_moderator,
+            "is_viewer": is_viewer,
             "current_workspace": current_workspace,
             "user_workspaces": user_workspaces,
             "workspace_members": workspace_members,
+            "all_system_users": all_system_users,
             "accounts": accounts,
             "categories": categories,
             "summary": summary,
@@ -118,6 +301,7 @@ async def dashboard_page(
             "invite_link": invite_link
         }
     )
+
 
 @router.get("/export/excel")
 async def export_excel_route(
@@ -312,9 +496,98 @@ async def api_delete_workspace(workspace_id: int, db: Session = Depends(get_db))
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-# APIs para Gestão de Usuários & Membros (Web & Telegram)
+class SystemUserCreateRequest(BaseModel):
+    name: str
+    username: str
+    phone: str
+    system_role: str = "visualizador"
+    initial_password: Optional[str] = None
+    telegram_id: Optional[str] = None
+    workspace_id: Optional[int] = None
+
+class SystemUserUpdateRequest(BaseModel):
+    name: Optional[str] = None
+    username: Optional[str] = None
+    phone: Optional[str] = None
+    system_role: Optional[str] = None
+    telegram_id: Optional[str] = None
+    is_active: Optional[bool] = None
+    new_password: Optional[str] = None
+
+# =========================================================================
+# APIs de Administração de Usuários do Sistema (Exclusivo Administrador)
+# =========================================================================
+
+@router.get("/api/admin/users")
+async def api_admin_get_users(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Lista todos os usuários do sistema com suas permissões (somente admin)"""
+    return UserService.get_all_users(db)
+
+@router.post("/api/admin/users")
+async def api_admin_create_user(
+    payload: SystemUserCreateRequest,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Cria um novo usuário no sistema com role e telefone obrigatório (somente admin)"""
+    try:
+        res = UserService.create_system_user(
+            db=db,
+            name=payload.name,
+            username=payload.username,
+            phone=payload.phone,
+            system_role=payload.system_role,
+            initial_password=payload.initial_password,
+            telegram_id=payload.telegram_id,
+            workspace_id=payload.workspace_id
+        )
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.put("/api/admin/users/{user_id}")
+async def api_admin_update_user(
+    user_id: int,
+    payload: SystemUserUpdateRequest,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Atualiza dados, permissões e status de um usuário (somente admin)"""
+    try:
+        res = UserService.update_system_user(
+            db=db,
+            user_id=user_id,
+            name=payload.name,
+            username=payload.username,
+            phone=payload.phone,
+            system_role=payload.system_role,
+            telegram_id=payload.telegram_id,
+            is_active=payload.is_active,
+            new_password=payload.new_password
+        )
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@router.post("/api/admin/users/{user_id}/toggle-status")
+async def api_admin_toggle_user_status(
+    user_id: int,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Inativa ou ativa um usuário com proteção para o admin padrão (somente admin)"""
+    try:
+        res = UserService.toggle_user_status(db, user_id)
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+# APIs para Gestão de Usuários & Membros do Workspace
 @router.post("/api/users")
-async def api_add_user(payload: UserAddRequest, db: Session = Depends(get_db)):
+async def api_add_user(payload: UserAddRequest, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
     from app.services.user_service import UserService
     if not payload.name.strip():
         raise HTTPException(status_code=400, detail="Nome do usuário é obrigatório")
@@ -331,11 +604,18 @@ async def api_add_user(payload: UserAddRequest, db: Session = Depends(get_db)):
     return res
 
 @router.put("/api/users/{user_id}")
-async def api_update_user(user_id: int, workspace_id: int, payload: UserUpdateRequest, db: Session = Depends(get_db)):
+async def api_update_user(
+    user_id: int,
+    payload: UserUpdateRequest,
+    workspace_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
     from app.services.user_service import UserService
+    ws_id = workspace_id or current_user.current_workspace_id or 1
     res = UserService.update_user_member(
         db=db,
-        workspace_id=workspace_id,
+        workspace_id=ws_id,
         user_id=user_id,
         name=payload.name,
         username=payload.username,
@@ -348,22 +628,27 @@ async def api_update_user(user_id: int, workspace_id: int, payload: UserUpdateRe
     return res
 
 @router.post("/api/users/{user_id}/toggle-active")
-async def api_toggle_user_active(user_id: int, workspace_id: int, db: Session = Depends(get_db)):
-    from app.models import User
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado")
-    user.is_active = not (user.is_active if user.is_active is not None else True)
-    db.commit()
+async def api_toggle_user_active(
+    user_id: int,
+    workspace_id: Optional[int] = Query(None),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_admin)
+):
     try:
-        from app.services.event_bus import event_bus
-        event_bus.notify_workspace_update(workspace_id)
-    except Exception:
-        pass
-    return {"success": True, "is_active": user.is_active}
+        res = UserService.toggle_user_status(db, user_id)
+        if workspace_id:
+            try:
+                from app.services.event_bus import event_bus
+                event_bus.notify_workspace_update(workspace_id)
+            except Exception:
+                pass
+        return res
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
 
 @router.delete("/api/workspaces/{workspace_id}/members/{user_id}")
-async def api_remove_workspace_member(workspace_id: int, user_id: int, db: Session = Depends(get_db)):
+async def api_remove_workspace_member(workspace_id: int, user_id: int, db: Session = Depends(get_db), current_user: User = Depends(require_admin)):
     from app.services.user_service import UserService
     try:
         success = UserService.remove_user_from_workspace(db, workspace_id, user_id)

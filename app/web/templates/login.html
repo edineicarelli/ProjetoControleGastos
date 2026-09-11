@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acesso Seguro | Sistema de Gestão Financeira Inteligente</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-light: #818cf8;
+            --primary-dark: #4f46e5;
+            --primary-glow: rgba(99, 102, 241, 0.45);
+            --accent-cyan: #06b6d4;
+            --accent-pink: #ec4899;
+            --bg-dark: #090d16;
+            --card-bg: rgba(15, 23, 42, 0.72);
+            --card-border: rgba(255, 255, 255, 0.12);
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            --success: #10b981;
+            --danger: #ef4444;
+            --radius-lg: 20px;
+            --radius-md: 12px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        body {
+            background-color: var(--bg-dark);
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            overflow-x: hidden;
+            overflow-y: auto;
+            padding: 1.5rem;
+        }
+
+        /* Animated Mesh Gradient Background */
+        .ambient-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+            pointer-events: none;
+            overflow: hidden;
+        }
+
+        .ambient-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(90px);
+            opacity: 0.55;
+            animation: floatOrb 18s ease-in-out infinite alternate;
+        }
+
+        .orb-1 {
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, #6366f1, #4338ca);
+            top: -100px;
+            left: -100px;
+            animation-duration: 16s;
+        }
+
+        .orb-2 {
+            width: 450px;
+            height: 450px;
+            background: radial-gradient(circle, #ec4899, #be185d);
+            bottom: -80px;
+            right: -80px;
+            animation-duration: 20s;
+            animation-delay: -4s;
+        }
+
+        .orb-3 {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, #06b6d4, #0e7490);
+            top: 40%;
+            left: 55%;
+            animation-duration: 24s;
+            animation-delay: -8s;
+        }
+
+        .orb-4 {
+            width: 320px;
+            height: 320px;
+            background: radial-gradient(circle, #10b981, #047857);
+            bottom: 25%;
+            left: 10%;
+            animation-duration: 22s;
+            animation-delay: -12s;
+            opacity: 0.35;
+        }
+
+        @keyframes floatOrb {
+            0% {
+                transform: translate(0px, 0px) scale(1) rotate(0deg);
+            }
+            33% {
+                transform: translate(60px, -50px) scale(1.12) rotate(45deg);
+            }
+            66% {
+                transform: translate(-40px, 40px) scale(0.92) rotate(90deg);
+            }
+            100% {
+                transform: translate(50px, 30px) scale(1.05) rotate(135deg);
+            }
+        }
+
+        /* Subtle Geometric Grid Overlay */
+        .grid-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-image: 
+                linear-gradient(rgba(255, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: 1;
+            pointer-events: none;
+        }
+
+        /* Login Container & Card */
+        .login-wrapper {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 440px;
+            animation: fadeInCard 0.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes fadeInCard {
+            from {
+                opacity: 0;
+                transform: translateY(24px) scale(0.97);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0) scale(1);
+            }
+        }
+
+        .login-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(24px);
+            -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 2.5rem 2.25rem;
+            box-shadow: 
+                0 20px 40px -15px rgba(0, 0, 0, 0.6),
+                0 0 40px rgba(99, 102, 241, 0.15);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 3px;
+            background: linear-gradient(90deg, #6366f1, #ec4899, #06b6d4, #10b981);
+            background-size: 300% 300%;
+            animation: gradientBorder 6s ease infinite;
+        }
+
+        @keyframes gradientBorder {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* Header / Logo */
+        .login-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .brand-icon-wrap {
+            width: 60px;
+            height: 60px;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            border-radius: var(--radius-md);
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.8rem;
+            box-shadow: 0 0 24px var(--primary-glow);
+            margin-bottom: 1rem;
+            animation: pulseGlow 3s infinite alternate;
+        }
+
+        @keyframes pulseGlow {
+            0% { box-shadow: 0 0 16px var(--primary-glow); transform: scale(1); }
+            100% { box-shadow: 0 0 32px rgba(139, 92, 246, 0.7); transform: scale(1.04); }
+        }
+
+        .login-title {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #fff;
+            letter-spacing: -0.02em;
+            margin-bottom: 0.35rem;
+        }
+
+        .login-subtitle {
+            font-size: 0.88rem;
+            color: var(--text-secondary);
+        }
+
+        /* Form Controls */
+        .form-group {
+            margin-bottom: 1.25rem;
+            position: relative;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 0.82rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.45rem;
+        }
+
+        .input-wrap {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 1rem;
+            font-size: 1.1rem;
+            color: var(--text-muted);
+            pointer-events: none;
+            transition: color 0.2s ease;
+        }
+
+        .form-input {
+            width: 100%;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: var(--radius-md);
+            padding: 0.85rem 1rem 0.85rem 2.75rem;
+            color: #fff;
+            font-size: 0.95rem;
+            outline: none;
+            transition: all 0.25s ease;
+        }
+
+        .form-input:focus {
+            border-color: var(--primary-light);
+            background: rgba(15, 23, 42, 0.85);
+            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.25);
+        }
+
+        .form-input:focus ~ .input-icon {
+            color: var(--primary-light);
+        }
+
+        .toggle-pwd-btn {
+            position: absolute;
+            right: 0.85rem;
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1rem;
+            cursor: pointer;
+            padding: 0.3rem;
+            transition: color 0.2s ease;
+        }
+
+        .toggle-pwd-btn:hover {
+            color: #fff;
+        }
+
+        /* Remember & Forgot options */
+        .options-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 0.6rem;
+            font-size: 0.82rem;
+        }
+
+        .checkbox-label {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.45rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .checkbox-label input[type="checkbox"] {
+            accent-color: var(--primary);
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+
+        .forgot-link {
+            color: var(--primary-light);
+            text-decoration: none;
+            font-weight: 500;
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            font-size: 0.82rem;
+            transition: all 0.2s ease;
+        }
+
+        .forgot-link:hover {
+            color: #fff;
+            text-decoration: underline;
+        }
+
+        /* Submit Button */
+        .btn-submit {
+            width: 100%;
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #fff;
+            border: none;
+            border-radius: var(--radius-md);
+            padding: 0.9rem;
+            font-size: 1rem;
+            font-weight: 700;
+            cursor: pointer;
+            box-shadow: 0 4px 18px var(--primary-glow);
+            transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+        }
+
+        .btn-submit:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 24px rgba(99, 102, 241, 0.6);
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+        }
+
+        .btn-submit:active {
+            transform: translateY(0);
+        }
+
+        /* Alert Messages */
+        .alert-box {
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-md);
+            font-size: 0.85rem;
+            margin-bottom: 1.25rem;
+            display: none;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.35);
+            color: #fca5a5;
+        }
+
+        .alert-success {
+            background: rgba(16, 185, 129, 0.15);
+            border: 1px solid rgba(16, 185, 129, 0.35);
+            color: #6ee7b7;
+        }
+
+        /* Modals (Forgot Password & First Time Password Change) */
+        .modal-backdrop {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            z-index: 100;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+
+        .modal-card {
+            background: #0f172a;
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: var(--radius-lg);
+            width: 100%;
+            max-width: 420px;
+            padding: 2rem;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.8);
+            position: relative;
+            animation: modalPop 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+        }
+
+        @keyframes modalPop {
+            from { opacity: 0; transform: scale(0.92); }
+            to { opacity: 1; transform: scale(1); }
+        }
+
+        .modal-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1.25rem;
+        }
+
+        .modal-title {
+            font-size: 1.15rem;
+            font-weight: 700;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .modal-close {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            font-size: 1.3rem;
+            cursor: pointer;
+            transition: color 0.2s;
+        }
+
+        .modal-close:hover {
+            color: #fff;
+        }
+
+        .footer-note {
+            text-align: center;
+            margin-top: 1.75rem;
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Ambient Mesh Background -->
+    <div class="ambient-canvas">
+        <div class="ambient-orb orb-1"></div>
+        <div class="ambient-orb orb-2"></div>
+        <div class="ambient-orb orb-3"></div>
+        <div class="ambient-orb orb-4"></div>
+    </div>
+    <div class="grid-overlay"></div>
+
+    <!-- Login Container -->
+    <div class="login-wrapper">
+        <div class="login-card">
+            
+            <div class="login-header">
+                <div class="brand-icon-wrap">💎</div>
+                <h1 class="login-title">Controle Financeiro</h1>
+                <p class="login-subtitle">Acesso Seguro & Inteligente</p>
+            </div>
+
+            <!-- Feedback Alert -->
+            <div id="loginAlert" class="alert-box alert-error">
+                <span id="loginAlertIcon">⚠️</span>
+                <span id="loginAlertMsg">Erro ao realizar login</span>
+            </div>
+
+            <form id="loginForm" onsubmit="handleLogin(event)">
+                
+                <!-- Username Input -->
+                <div class="form-group">
+                    <label class="form-label" for="usernameInput">Usuário ou Telefone</label>
+                    <div class="input-wrap">
+                        <input type="text" id="usernameInput" class="form-input" placeholder="Ex: admin ou (11) 99999-9999" required autocomplete="username">
+                        <span class="input-icon">👤</span>
+                    </div>
+                </div>
+
+                <!-- Password Input -->
+                <div class="form-group">
+                    <label class="form-label" for="passwordInput">Senha de Acesso</label>
+                    <div class="input-wrap">
+                        <input type="password" id="passwordInput" class="form-input" placeholder="••••••••" required autocomplete="current-password">
+                        <span class="input-icon">🔒</span>
+                        <button type="button" class="toggle-pwd-btn" onclick="togglePasswordVisibility('passwordInput', this)" title="Ver senha">👁️</button>
+                    </div>
+                </div>
+
+                <!-- Remember User & Password Checkboxes -->
+                <div class="options-row">
+                    <div style="display: flex; flex-direction: column; gap: 0.35rem;">
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="rememberUser" onchange="handleRememberUserChange()">
+                            <span>Lembrar usuário</span>
+                        </label>
+                        <label class="checkbox-label">
+                            <input type="checkbox" id="rememberPassword" onchange="handleRememberPasswordChange()">
+                            <span>Lembrar senha</span>
+                        </label>
+                    </div>
+                    <div>
+                        <button type="button" class="forgot-link" onclick="openForgotPasswordModal()">
+                            Esqueci a senha?
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="btn-submit" id="loginBtn">
+                    <span>Entrar no Sistema</span> &rarr;
+                </button>
+            </form>
+
+            <div class="footer-note">
+                🔐 Protegido com criptografia de ponta a ponta & TLS
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL 1: ESQUECI MINHA SENHA (TELEGRAM RECOVERY COM VALIDAÇÃO DE TELEFONE) -->
+    <div id="forgotModal" class="modal-backdrop" onclick="if(event.target === this) closeForgotPasswordModal()">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h3 class="modal-title">✈️ Recuperar Senha</h3>
+                <button class="modal-close" onclick="closeForgotPasswordModal()">✕</button>
+            </div>
+            
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem; line-height: 1.4;">
+                Informe seu <b>usuário de acesso</b> e o <b>número de telefone cadastrado</b>. A validação cruzada garante a segurança da sua conta e a senha temporária será enviada no seu <b>Telegram</b>.
+            </p>
+
+            <div id="forgotAlert" class="alert-box alert-error">
+                <span id="forgotAlertMsg"></span>
+            </div>
+
+            <form id="forgotForm" onsubmit="handleForgotPassword(event)">
+                <div class="form-group">
+                    <label class="form-label" for="forgotUsername">Usuário / Login *</label>
+                    <div class="input-wrap">
+                        <input type="text" id="forgotUsername" class="form-input" placeholder="Ex: admin ou seu_login" required>
+                        <span class="input-icon">👤</span>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="forgotPhone">Telefone Celular Cadastrado * (com DDD)</label>
+                    <div class="input-wrap">
+                        <input type="tel" id="forgotPhone" class="form-input" placeholder="Ex: (11) 98765-4321" required oninput="maskPhoneInput(this)">
+                        <span class="input-icon">📱</span>
+                    </div>
+                    <small style="color: var(--text-muted); font-size: 0.72rem; display: block; margin-top: 4px;">
+                        🔒 O número deve coincidir exatamente com o telefone registrado no seu cadastro.
+                    </small>
+                </div>
+
+                <div style="display: flex; justify-content: flex-end; gap: 0.5rem; margin-top: 1.25rem;">
+                    <button type="button" class="btn-submit" onclick="closeForgotPasswordModal()" style="background: rgba(255,255,255,0.08); width: auto; padding: 0.75rem 1.25rem;">
+                        Cancelar
+                    </button>
+                    <button type="submit" class="btn-submit" id="forgotSubmitBtn" style="width: auto; padding: 0.75rem 1.25rem;">
+                        Validar & Enviar no Telegram ✈️
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL 2: ALTERAÇÃO OBRIGATÓRIA DE SENHA NO PRIMEIRO ACESSO -->
+    <div id="changePasswordModal" class="modal-backdrop">
+        <div class="modal-card" style="border: 1px solid rgba(99, 102, 241, 0.4);">
+            <div class="modal-header">
+                <h3 class="modal-title" style="color: #a78bfa;">🔑 Primeiro Acesso / Nova Senha</h3>
+            </div>
+            
+            <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 1.25rem; line-height: 1.4;">
+                Por motivos de segurança, você precisa definir uma <b>nova senha pessoal</b> para continuar acessando o sistema.
+            </p>
+
+            <div id="changePwdAlert" class="alert-box alert-error">
+                <span id="changePwdAlertMsg"></span>
+            </div>
+
+            <form id="changePasswordForm" onsubmit="handleChangePassword(event)">
+                <input type="hidden" id="changePwdUserId" value="">
+
+                <div class="form-group">
+                    <label class="form-label" for="newPasswordInput">Nova Senha *</label>
+                    <div class="input-wrap">
+                        <input type="password" id="newPasswordInput" class="form-input" placeholder="Mínimo 4 caracteres" required minlength="4">
+                        <span class="input-icon">🔒</span>
+                        <button type="button" class="toggle-pwd-btn" onclick="togglePasswordVisibility('newPasswordInput', this)">👁️</button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="confirmPasswordInput">Confirmar Nova Senha *</label>
+                    <div class="input-wrap">
+                        <input type="password" id="confirmPasswordInput" class="form-input" placeholder="Repita a nova senha" required minlength="4">
+                        <span class="input-icon">✅</span>
+                        <button type="button" class="toggle-pwd-btn" onclick="togglePasswordVisibility('confirmPasswordInput', this)">👁️</button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn-submit" id="changePwdSubmitBtn" style="margin-top: 1.25rem;">
+                    Salvar Senha & Acessar Painel 🚀
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Auth Script -->
+    <script>
+        // Carrega credenciais salvas no LocalStorage se o usuário optou por lembrar
+        document.addEventListener('DOMContentLoaded', () => {
+            const savedUser = localStorage.getItem('cg_saved_user');
+            const savedPassword = localStorage.getItem('cg_saved_pwd');
+            
+            if (savedUser) {
+                document.getElementById('usernameInput').value = savedUser;
+                document.getElementById('rememberUser').checked = true;
+            }
+            if (savedPassword) {
+                document.getElementById('passwordInput').value = savedPassword;
+                document.getElementById('rememberPassword').checked = true;
+            }
+        });
+
+        function togglePasswordVisibility(inputId, btn) {
+            const input = document.getElementById(inputId);
+            if (input.type === 'password') {
+                input.type = 'text';
+                btn.textContent = '🔒';
+            } else {
+                input.type = 'password';
+                btn.textContent = '👁️';
+            }
+        }
+
+        function handleRememberUserChange() {
+            const rem = document.getElementById('rememberUser').checked;
+            if (!rem) {
+                localStorage.removeItem('cg_saved_user');
+            }
+        }
+
+        function handleRememberPasswordChange() {
+            const rem = document.getElementById('rememberPassword').checked;
+            if (!rem) {
+                localStorage.removeItem('cg_saved_pwd');
+            }
+        }
+
+        async function handleLogin(e) {
+            e.preventDefault();
+            const btn = document.getElementById('loginBtn');
+            const alertBox = document.getElementById('loginAlert');
+            const alertMsg = document.getElementById('loginAlertMsg');
+            
+            const username = document.getElementById('usernameInput').value.trim();
+            const password = document.getElementById('passwordInput').value;
+            const rememberUser = document.getElementById('rememberUser').checked;
+            const rememberPassword = document.getElementById('rememberPassword').checked;
+
+            btn.disabled = true;
+            btn.innerHTML = '<span>Verificando...</span>';
+            alertBox.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || 'Usuário ou senha incorretos.');
+                }
+
+                // Salva ou limpa de acordo com as preferências
+                if (rememberUser) {
+                    localStorage.setItem('cg_saved_user', username);
+                } else {
+                    localStorage.removeItem('cg_saved_user');
+                }
+
+                if (rememberPassword) {
+                    localStorage.setItem('cg_saved_pwd', password);
+                } else {
+                    localStorage.removeItem('cg_saved_pwd');
+                }
+
+                // Se obrigatório trocar senha
+                if (data.must_change_password) {
+                    document.getElementById('changePwdUserId').value = data.user_id;
+                    document.getElementById('changePasswordModal').style.display = 'flex';
+                    btn.disabled = false;
+                    btn.innerHTML = '<span>Entrar no Sistema</span> &rarr;';
+                    return;
+                }
+
+                // Redireciona para o Dashboard
+                window.location.href = data.redirect_url || '/dashboard';
+
+            } catch (err) {
+                alertBox.className = 'alert-box alert-error';
+                alertBox.style.display = 'flex';
+                alertMsg.textContent = err.message;
+                btn.disabled = false;
+                btn.innerHTML = '<span>Entrar no Sistema</span> &rarr;';
+            }
+        }
+
+        // Máscara de Telefone
+        function maskPhoneInput(input) {
+            let val = input.value.replace(/\D/g, '');
+            if (val.length > 11) val = val.substring(0, 11);
+            if (val.length > 10) {
+                input.value = `(${val.substring(0, 2)}) ${val.substring(2, 7)}-${val.substring(7)}`;
+            } else if (val.length > 6) {
+                input.value = `(${val.substring(0, 2)}) ${val.substring(2, 6)}-${val.substring(6)}`;
+            } else if (val.length > 2) {
+                input.value = `(${val.substring(0, 2)}) ${val.substring(2)}`;
+            } else if (val.length > 0) {
+                input.value = `(${val}`;
+            }
+        }
+
+        // Modal Esqueci Senha
+        function openForgotPasswordModal() {
+            document.getElementById('forgotAlert').style.display = 'none';
+            const currentUsername = document.getElementById('usernameInput')?.value?.trim();
+            if (currentUsername) {
+                document.getElementById('forgotUsername').value = currentUsername;
+            }
+            document.getElementById('forgotModal').style.display = 'flex';
+            setTimeout(() => {
+                if (currentUsername) {
+                    document.getElementById('forgotPhone').focus();
+                } else {
+                    document.getElementById('forgotUsername').focus();
+                }
+            }, 100);
+        }
+
+        function closeForgotPasswordModal() {
+            document.getElementById('forgotModal').style.display = 'none';
+        }
+
+        async function handleForgotPassword(e) {
+            e.preventDefault();
+            const username = document.getElementById('forgotUsername').value.trim();
+            const phone = document.getElementById('forgotPhone').value.trim();
+            const btn = document.getElementById('forgotSubmitBtn');
+            const alertBox = document.getElementById('forgotAlert');
+            const alertMsg = document.getElementById('forgotAlertMsg');
+
+            if (!username || !phone) {
+                alertBox.className = 'alert-box alert-error';
+                alertBox.style.display = 'flex';
+                alertMsg.textContent = 'Por favor, informe tanto o usuário quanto o telefone cadastrado.';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Validando dados...';
+            alertBox.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, phone })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || 'Erro ao solicitar recuperação de senha.');
+                }
+
+                alertBox.className = 'alert-box alert-success';
+                alertBox.style.display = 'flex';
+                alertMsg.textContent = data.message || 'Identidade confirmada! Senha temporária enviada no Telegram.';
+                
+                setTimeout(() => {
+                    closeForgotPasswordModal();
+                    alertBox.style.display = 'none';
+                    // Pré-preenche campo de usuário na tela de login
+                    document.getElementById('usernameInput').value = username;
+                    document.getElementById('passwordInput').value = '';
+                    document.getElementById('passwordInput').focus();
+                }, 2800);
+
+            } catch (err) {
+                alertBox.className = 'alert-box alert-error';
+                alertBox.style.display = 'flex';
+                alertMsg.textContent = err.message;
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Validar & Enviar no Telegram ✈️';
+            }
+        }
+
+        // Troca Obrigatória de Senha
+        async function handleChangePassword(e) {
+            e.preventDefault();
+            const userId = document.getElementById('changePwdUserId').value;
+            const newPassword = document.getElementById('newPasswordInput').value;
+            const confirmPassword = document.getElementById('confirmPasswordInput').value;
+            const btn = document.getElementById('changePwdSubmitBtn');
+            const alertBox = document.getElementById('changePwdAlert');
+            const alertMsg = document.getElementById('changePwdAlertMsg');
+
+            if (newPassword !== confirmPassword) {
+                alertBox.className = 'alert-box alert-error';
+                alertBox.style.display = 'flex';
+                alertMsg.textContent = 'As senhas não coincidem!';
+                return;
+            }
+
+            btn.disabled = true;
+            btn.textContent = 'Salvando nova senha...';
+            alertBox.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/auth/change-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, new_password: newPassword })
+                });
+
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.detail || 'Erro ao alterar senha.');
+                }
+
+                alertBox.className = 'alert-box alert-success';
+                alertBox.style.display = 'flex';
+                alertMsg.textContent = 'Senha atualizada com sucesso! Redirecionando...';
+
+                // Atualiza credenciais salvas se configurado
+                if (document.getElementById('rememberPassword').checked) {
+                    localStorage.setItem('cg_saved_pwd', newPassword);
+                }
+
+                setTimeout(() => {
+                    window.location.href = '/dashboard';
+                }, 1200);
+
+            } catch (err) {
+                alertBox.className = 'alert-box alert-error';
+                alertBox.style.display = 'flex';
+                alertMsg.textContent = err.message;
+                btn.disabled = false;
+                btn.textContent = 'Salvar Senha & Acessar Painel 🚀';
+            }
+        }
+    </script>
+</body>
+</html>

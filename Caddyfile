@@ -1,0 +1,33 @@
+# =========================================================================
+# Caddyfile - Proxy Reverso com HTTPS Automático (Let's Encrypt / ZeroSSL)
+# =========================================================================
+# Se a variável DOMAIN_NAME não for fornecida, utilizará 'localhost' por padrão.
+# Para produção com domínio público, defina no .env: DOMAIN_NAME=seudominio.com
+
+{$DOMAIN_NAME:localhost} {
+    # Habilita compactação gzip e zstandard
+    encode gzip zstd
+
+    # Roteia todas as requisições (HTTP, HTTPS, WebSockets) para a aplicação
+    reverse_proxy finance-control:8000 {
+        # Configurações de cabeçalhos
+        header_up Host {host}
+        header_up X-Real-IP {remote_host}
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Forwarded-Proto {scheme}
+    }
+
+    # Cabeçalhos de segurança complementares
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "SAMEORIGIN"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Log de acesso estruturado (opcional)
+    log {
+        output stdout
+        format console
+    }
+}

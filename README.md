@@ -80,7 +80,27 @@ PORT=8000
 BASE_URL="http://localhost:8000"
 ```
 
-### 3. Executar o Servidor & Bot
+### 3. Executar com Docker & HTTPS (Recomendado para Produção)
+
+O projeto inclui configuração pronta com **Caddy** para emissão e renovação automática de certificados SSL/TLS (**HTTPS** via Let's Encrypt / ZeroSSL) e proxy reverso.
+
+1. Configure seu domínio no `.env`:
+   ```env
+   DOMAIN_NAME="seudominio.com"
+   BASE_URL="https://seudominio.com"
+   ```
+
+2. Inicie os containers com Docker Compose:
+   ```bash
+   docker compose up -d --build
+   ```
+
+O Caddy cuidará automaticamente de redirecionar HTTP (porta 80) para HTTPS (porta 443) e obter os certificados SSL.
+
+---
+
+### 4. Executar Localmente sem Docker
+
 Execute com o ambiente virtual:
 
 ```bash
@@ -94,6 +114,7 @@ python -m app.main
 O servidor estará disponível em:
 - **Dashboard Web**: `http://localhost:8000/dashboard`
 - **Documentação da API (Swagger)**: `http://localhost:8000/docs`
+
 
 ---
 

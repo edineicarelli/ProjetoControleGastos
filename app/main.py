@@ -2,9 +2,10 @@ import asyncio
 import logging
 import os
 from contextlib import asynccontextmanager
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 from app.config import settings
 from app.database import init_db
@@ -106,6 +107,21 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+# Suporte a Proxy Reverso (reconhece cabeçalhos X-Forwarded-Proto e IPs reais)
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
+
+# Middleware de cabeçalhos de segurança HTTP
+@app.middleware("http")
+async def add_security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    response.headers["X-XSS-Protection"] = "1; mode=block"
+    # Adiciona HSTS se a conexão for segura (HTTPS)
+    if request.url.scheme == "https" or request.headers.get("x-forwarded-proto") == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    return response
+
 # Monta arquivos estáticos (CSS, JS, Imagens)
 static_dir = os.path.join(os.path.dirname(__file__), "web", "static")
 app.mount("/static", StaticFiles(directory=static_dir), name="static")
@@ -116,3 +132,4 @@ app.include_router(web_router)
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("app.main:app", host=settings.HOST, port=settings.PORT, reload=True)
+

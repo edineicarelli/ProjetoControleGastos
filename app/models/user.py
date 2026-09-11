@@ -9,12 +9,21 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     telegram_id = Column(String, unique=True, index=True, nullable=False)
     name = Column(String, nullable=True)
-    username = Column(String, nullable=True)
+    username = Column(String, nullable=True, unique=True, index=True)
+    phone = Column(String, nullable=True, index=True)
+    password_hash = Column(String, nullable=True)
+    system_role = Column(String, default="visualizador")  # "administrador", "moderador", "visualizador"
+    is_admin_default = Column(Boolean, default=False)
+    must_change_password = Column(Boolean, default=False)
+    temp_password = Column(String, nullable=True)
+    temp_password_expires_at = Column(DateTime, nullable=True)
     current_workspace_id = Column(Integer, ForeignKey("workspaces.id", ondelete="SET NULL"), nullable=True)
     is_active = Column(Boolean, default=True)
+    is_telegram_authenticated = Column(Boolean, default=False)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     # Relationships
     current_workspace = relationship("Workspace", foreign_keys=[current_workspace_id])
     memberships = relationship("WorkspaceMember", back_populates="user", cascade="all, delete-orphan")
     transactions = relationship("Transaction", back_populates="user")
+

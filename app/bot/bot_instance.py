@@ -19,7 +19,9 @@ from app.bot.handlers.commands import (
     mercado_handler,
     painel_handler,
     entrar_handler,
-    zerar_handler
+    zerar_handler,
+    login_handler,
+    logout_handler
 )
 from app.bot.handlers.text_voice_photo import (
     text_message_handler,
@@ -38,6 +40,13 @@ def create_bot_app():
         return None
 
     app = ApplicationBuilder().token(settings.TELEGRAM_BOT_TOKEN).build()
+
+    # Comandos de Autenticação e Sessão
+    app.add_handler(CommandHandler("login", login_handler))
+    app.add_handler(CommandHandler("senha", login_handler))
+    app.add_handler(CommandHandler("sair", logout_handler))
+    app.add_handler(CommandHandler("logout", logout_handler))
+    app.add_handler(CommandHandler("bloquear", logout_handler))
 
     # Comandos básicos
     app.add_handler(CommandHandler("start", start_handler))
