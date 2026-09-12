@@ -595,18 +595,78 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
         
         for t in parsed.transactions:
             date = datetime.datetime.utcnow() + datetime.timedelta(days=t.date_offset_days)
+            t_items = getattr(t, "items", None)
             
-            # Verificação anti-duplicidade
+            # Verificação anti-duplicidade precisa (valor, fornecedor e itens)
             existing_tx = FinanceService.find_duplicate_transaction(
                 db=db,
                 workspace_id=ws.id,
                 type=t.type,
                 amount=t.amount,
                 description=t.description,
-                transaction_date=date
+                transaction_date=date,
+                items=t_items
             )
             
             if existing_tx:
+                # Se for apenas 1 transação (comportamento padrão de fotos e recibos), oferece confirmação Sim/Não
+                if len(parsed.transactions) == 1:
+                    from app.bot.handlers.pending_duplicate import save_pending_duplicate
+                    from app.bot.keyboards import get_duplicate_confirmation_keyboard
+
+                    raw_items = []
+                    if t_items:
+                        for it in t_items:
+                            if hasattr(it, "model_dump"):
+                                raw_items.append(it.model_dump())
+                            elif isinstance(it, dict):
+                                raw_items.append(it)
+                            else:
+                                raw_items.append(it.__dict__)
+
+                    token = save_pending_duplicate({
+                        "workspace_id": ws.id,
+                        "user_id": user.id,
+                        "type": t.type,
+                        "amount": t.amount,
+                        "description": t.description,
+                        "category_name": t.category_name,
+                        "payment_method": t.payment_method,
+                        "transaction_date": date.isoformat(),
+                        "receipt_url": receipt_url,
+                        "items": raw_items,
+                        "existing_tx_id": existing_tx.id
+                    })
+
+                    tipo_icon = "🟢 Entrada" if existing_tx.type == "income" else "🔴 Saída"
+                    exist_cat = existing_tx.category.name if existing_tx.category else "Outros"
+                    
+                    existing_items_str = ""
+                    if existing_tx.items_count > 0:
+                        sample_it = [it.name for it in existing_tx.items[:3]]
+                        existing_items_str = f"\n🛒 *Itens existentes ({existing_tx.items_count}):* " + ", ".join(sample_it) + ("..." if existing_tx.items_count > 3 else "")
+
+                    new_items_str = ""
+                    if len(raw_items) > 0:
+                        sample_new = [it.get("name", "") for it in raw_items[:3]]
+                        new_items_str = f"\n🛒 *Itens do novo cupom ({len(raw_items)}):* " + ", ".join(sample_new) + ("..." if len(raw_items) > 3 else "")
+
+                    dup_msg = (
+                        f"⚠️ *Possível Lançamento Duplicado Detectado!*\n\n"
+                        f"Identificamos que já existe um lançamento com o mesmo valor e fornecedor:\n\n"
+                        f"📌 *Lançamento já Cadastrado:*\n"
+                        f"{tipo_icon}: *{format_currency_br(existing_tx.amount)}* ({existing_tx.description})\n"
+                        f"📅 Data: *{existing_tx.transaction_date.strftime('%d/%m/%Y')}* • 🏷️ _{exist_cat}_ • 💳 Conta: *{existing_tx.payment_method}*"
+                        f"{existing_items_str}\n\n"
+                        f"🧾 *Novo Lançamento Recebido:*\n"
+                        f"{tipo_icon}: *{format_currency_br(t.amount)}* ({t.description})\n"
+                        f"🏷️ Categoria: _{t.category_name}_ • 💳 Conta: *{t.payment_method}*"
+                        f"{new_items_str}\n\n"
+                        f"❓ *Deseja cadastrar mesmo assim em duplicidade?*"
+                    )
+                    markup = get_duplicate_confirmation_keyboard(token)
+                    return dup_msg, markup
+
                 tipo_icon = "🟢 Entrada" if existing_tx.type == "income" else "🔴 Saída"
                 duplicated_items.append(
                     f"{tipo_icon}: *{format_currency_br(existing_tx.amount)}* ({existing_tx.description})\n"
@@ -637,7 +697,7 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
                 item_line += f"\n🛒 *{tx.items_count} itens incluídos:* " + ", ".join(sample_items) + ("..." if tx.items_count > 3 else "")
             saved_items.append(item_line)
 
-        # Caso todos os itens enviados sejam duplicados
+        # Caso todos os itens enviados sejam duplicados em lote
         if not saved_items and duplicated_items:
             dup_msg = (
                 f"⚠️ *Lançamento já Cadastrado (Duplicidade Evitada)!*\n\n"

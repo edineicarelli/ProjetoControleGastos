@@ -58,6 +58,16 @@ def get_accounts_selection_keyboard(transaction_id: int, accounts: List[Account]
     ])
     return InlineKeyboardMarkup(buttons)
 
+def get_duplicate_confirmation_keyboard(token: str) -> InlineKeyboardMarkup:
+    """Gera botões Sim / Não para confirmação de lançamento em duplicidade"""
+    keyboard = [
+        [
+            InlineKeyboardButton("✅ Sim, Cadastrar", callback_data=f"dup_confirm_{token}"),
+            InlineKeyboardButton("❌ Não, Cancelar", callback_data=f"dup_cancel_{token}")
+        ]
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
 def get_extrato_keyboard() -> InlineKeyboardMarkup:
     """Teclado de ações para a mensagem de extrato"""
     keyboard = [

@@ -157,6 +157,80 @@ class FinanceService:
         return new_ws
 
     @staticmethod
+    def _are_descriptions_matching(desc1: str, desc2: str) -> bool:
+        """
+        Verifica se os fornecedores / estabelecimentos são os mesmos ou muito similares.
+        """
+        d1 = desc1.lower().strip()
+        d2 = desc2.lower().strip()
+        if not d1 or not d2:
+            return False
+        if d1 == d2:
+            return True
+        if d1 in d2 or d2 in d1:
+            return True
+
+        # Stop words ignoradas na comparação
+        stop_words = {"de", "do", "da", "dos", "das", "em", "no", "na", "nos", "nas", "para", "com", "e", "ou", "por", "um", "uma", "compra", "gasto", "pagamento", "valor", "cupom", "nota", "fiscal"}
+        words1 = set(w for w in d1.split() if len(w) >= 3 and w not in stop_words)
+        words2 = set(w for w in d2.split() if len(w) >= 3 and w not in stop_words)
+
+        if words1 and words2 and (words1 & words2):
+            return True
+
+        return False
+
+    @staticmethod
+    def _are_items_duplicate(existing_items: List[TransactionItem], new_items: List[Any]) -> bool:
+        """
+        Compara duas listas de itens para determinar se são a mesma compra / cupom fiscal.
+        Retorna True se forem substancialmente os mesmos itens, ou False se forem compras com produtos diferentes.
+        """
+        if not existing_items or not new_items:
+            # Se um dos lados não tem itens discriminados, não é possível diferenciar por itens
+            return True
+
+        def normalize_name(n: str) -> str:
+            return "".join(c for c in n.lower() if c.isalnum() or c.isspace()).strip()
+
+        existing_names = [normalize_name(it.name) for it in existing_items if it.name]
+        new_names = []
+        for it in new_items:
+            if hasattr(it, "name") and it.name:
+                new_names.append(normalize_name(it.name))
+            elif isinstance(it, dict) and it.get("name"):
+                new_names.append(normalize_name(str(it["name"])))
+
+        if not existing_names or not new_names:
+            return True
+
+        # Se a contagem de itens for muito discrepante (ex: um tem 8 itens e o outro tem 1), são compras distintas
+        min_len = min(len(existing_names), len(new_names))
+        max_len = max(len(existing_names), len(new_names))
+        if max_len > 1 and (min_len / max_len) < 0.4:
+            return False
+
+        # Verifica interseção de nomes ou palavras-chave
+        match_count = 0
+        for n_name in new_names:
+            n_words = set(w for w in n_name.split() if len(w) > 2)
+            matched = False
+            for e_name in existing_names:
+                if n_name == e_name or (len(n_name) > 3 and n_name in e_name) or (len(e_name) > 3 and e_name in n_name):
+                    match_count += 1
+                    matched = True
+                    break
+                e_words = set(w for w in e_name.split() if len(w) > 2)
+                if n_words and e_words and (n_words & e_words):
+                    match_count += 1
+                    matched = True
+                    break
+
+        similarity = match_count / max(len(new_names), 1)
+        # Se 50% ou mais dos itens coincidirem, consideramos a mesma lista de produtos
+        return similarity >= 0.5
+
+    @staticmethod
     def find_duplicate_transaction(
         db: Session,
         workspace_id: int,
@@ -164,11 +238,12 @@ class FinanceService:
         amount: float,
         description: str,
         transaction_date: Optional[datetime.datetime] = None,
-        hours_window: int = 24
+        hours_window: int = 48,
+        items: Optional[List[Any]] = None
     ) -> Optional[Transaction]:
         """
         Verifica se já existe uma transação idêntica no workspace
-        (mesmo tipo, mesmo valor e dentro de uma janela de tempo no mesmo dia).
+        (mesmo tipo, mesmo valor, mesmo fornecedor/estabelecimento e mesmos itens se fornecidos).
         """
         tx_date = transaction_date or datetime.datetime.now()
         start_time = tx_date - datetime.timedelta(hours=hours_window)
@@ -180,22 +255,23 @@ class FinanceService:
             Transaction.status == "completed",
             Transaction.transaction_date >= start_time,
             Transaction.transaction_date <= end_time
-        ).all()
+        ).order_by(Transaction.transaction_date.desc()).all()
 
-        clean_desc = description.lower().strip()
         for tx in recent_txs:
             if abs(tx.amount - abs(float(amount))) < 0.01:
-                existing_desc = tx.description.lower().strip()
-                if clean_desc == existing_desc:
-                    return tx
-                # Se ambas tiverem termos coincidentes significativos
-                words_new = set(w for w in clean_desc.split() if len(w) > 3)
-                words_existing = set(w for w in existing_desc.split() if len(w) > 3)
-                if words_new and words_existing and (words_new & words_existing):
-                    return tx
-                # Se a transação for no mesmo dia e com valor idêntico
-                if tx_date.date() == tx.transaction_date.date():
-                    return tx
+                # Checa se o fornecedor / estabelecimento corresponde
+                if FinanceService._are_descriptions_matching(description, tx.description):
+                    # Se fornecedor e valor batem, checa os itens caso ambos tenham itens
+                    existing_items = tx.items or []
+                    if items and existing_items:
+                        if FinanceService._are_items_duplicate(existing_items, items):
+                            return tx
+                        else:
+                            # Itens são comprovadamente diferentes! Não é duplicidade.
+                            continue
+                    else:
+                        # Se não há itens para comparar em um deles, mas fornecedor e valor batem na janela
+                        return tx
 
         return None
 

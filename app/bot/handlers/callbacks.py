@@ -621,6 +621,78 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                     msg += f"{icon} *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 💳 _{t.payment_method}_ • 📅 _{dt}_\n\n"
                 await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_extrato_keyboard())
 
+        elif data.startswith("dup_confirm_"):
+            token = data.replace("dup_confirm_", "")
+            from app.bot.handlers.pending_duplicate import pop_pending_duplicate
+            from app.services.account_service import AccountService
+            from app.bot.keyboards import get_accounts_selection_keyboard
+            import datetime
+
+            pending = pop_pending_duplicate(token)
+            if not pending:
+                await query.edit_message_text(
+                    "⚠️ *Esta solicitação de confirmação expirou ou já foi processada.*\n\n"
+                    "Por favor, envie o comprovante ou gasto novamente se desejar cadastrar.",
+                    parse_mode="Markdown"
+                )
+            else:
+                try:
+                    tx_date = datetime.datetime.fromisoformat(pending["transaction_date"])
+                except Exception:
+                    tx_date = datetime.datetime.utcnow()
+
+                tx = FinanceService.add_transaction(
+                    db=db,
+                    workspace_id=pending["workspace_id"],
+                    user_id=pending["user_id"],
+                    type=pending["type"],
+                    amount=pending["amount"],
+                    description=pending["description"],
+                    category_name=pending["category_name"],
+                    payment_method=pending["payment_method"],
+                    transaction_date=tx_date,
+                    receipt_url=pending["receipt_url"],
+                    items=pending["items"]
+                )
+
+                summary = FinanceService.get_monthly_summary(db, ws.id)
+                saldo_emoji = "🟢" if summary["net_balance"] >= 0 else "🔴"
+                tipo_icon = "🟢 Entrada" if tx.type == "income" else "🔴 Saída"
+                cat_name = tx.category.name if tx.category else "Outros"
+                acc_name = tx.payment_method
+
+                item_line = f"{tipo_icon}: *{format_currency_br(tx.amount)}* ({tx.description})\n🏷️ Categoria: _{cat_name}_ • 💳 Conta: *{acc_name}*"
+                if tx.items_count > 0:
+                    sample_items = [it.name for it in tx.items[:3]]
+                    item_line += f"\n🛒 *{tx.items_count} itens incluídos:* " + ", ".join(sample_items) + ("..." if tx.items_count > 3 else "")
+
+                msg = (
+                    f"✅ *Lançamento Cadastrado com Sucesso (Duplicidade Confirmada)!*\n\n"
+                    f"{item_line}\n\n"
+                    f"📍 *Perfil:* `{ws.name}`\n"
+                    f"{saldo_emoji} *Novo Saldo do Mês:* {format_currency_br(summary['net_balance'])}\n\n"
+                    f"👇 *Selecione ou troque a conta bancária/cartão abaixo:*"
+                )
+                accounts = AccountService.get_accounts(db, ws.id)
+                markup = get_accounts_selection_keyboard(
+                    tx.id,
+                    accounts,
+                    tx.account_id,
+                    has_items=bool(tx.items_count > 0),
+                    items_count=tx.items_count
+                )
+                await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=markup)
+
+        elif data.startswith("dup_cancel_"):
+            token = data.replace("dup_cancel_", "")
+            from app.bot.handlers.pending_duplicate import delete_pending_duplicate
+            delete_pending_duplicate(token)
+            await query.edit_message_text(
+                "❌ *Lançamento cancelado.*\n\n"
+                "Nenhum registro foi criado no seu extrato e seus saldos permanecem inalterados.",
+                parse_mode="Markdown"
+            )
+
 
     finally:
         db.close()
