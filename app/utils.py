@@ -37,3 +37,53 @@ def format_number_br(value: float | int | None, decimals: int = 0) -> str:
         return f"{int(round(val)):,}".replace(",", ".")
     else:
         return f"{val:,.{decimals}f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def format_items_list_text(items: list, max_items: int = 25) -> str:
+    """
+    Formata lista de itens de uma transação / cupom fiscal para apresentação clara e elegante no Telegram.
+    """
+    if not items:
+        return ""
+
+    lines = [f"\n🧾 *Itens do Cupom Fiscal ({len(items)} produtos):*"]
+    for idx, it in enumerate(items[:max_items], 1):
+        name = getattr(it, "name", None) or (it.get("name") if isinstance(it, dict) else str(it))
+        quantity = getattr(it, "quantity", None) if getattr(it, "quantity", None) is not None else (it.get("quantity", 1.0) if isinstance(it, dict) else 1.0)
+        unit = getattr(it, "unit", None) or (it.get("unit", "un") if isinstance(it, dict) else "un")
+        unit_price = getattr(it, "unit_price", None) if getattr(it, "unit_price", None) is not None else (it.get("unit_price", 0.0) if isinstance(it, dict) else 0.0)
+        total_price = getattr(it, "total_price", None) if getattr(it, "total_price", None) is not None else (it.get("total_price", 0.0) if isinstance(it, dict) else 0.0)
+
+        try:
+            qty_num = float(quantity) if quantity is not None else 1.0
+        except (ValueError, TypeError):
+            qty_num = 1.0
+
+        try:
+            up_num = float(unit_price) if unit_price is not None else 0.0
+        except (ValueError, TypeError):
+            up_num = 0.0
+
+        try:
+            tot_num = float(total_price) if total_price is not None else 0.0
+        except (ValueError, TypeError):
+            tot_num = 0.0
+
+        if tot_num <= 0 and up_num > 0:
+            tot_num = qty_num * up_num
+
+        if up_num > 0 and (qty_num != 1 or unit != "un"):
+            unit_str = f" ({qty_num:g} {unit} x {format_currency_br(up_num)})"
+        elif qty_num != 1 or unit != "un":
+            unit_str = f" ({qty_num:g} {unit})"
+        else:
+            unit_str = ""
+
+        tot_str = f" → *{format_currency_br(tot_num)}*" if tot_num > 0 else ""
+        lines.append(f"  *{idx}.* {name}{unit_str}{tot_str}")
+
+    if len(items) > max_items:
+        lines.append(f"  _... e mais {len(items) - max_items} itens na lista completa._")
+
+    return "\n".join(lines)
+

@@ -1,5 +1,5 @@
 from telegram import ReplyKeyboardMarkup, KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton
-from typing import List, Optional
+from typing import List, Optional, Any
 from app.config import settings
 from app.models import Account
 
@@ -48,7 +48,7 @@ def get_accounts_selection_keyboard(transaction_id: int, accounts: List[Account]
 
     if has_items and items_count > 0:
         buttons.append([
-            InlineKeyboardButton(f"🛒 Ver Itens ({items_count})", callback_data=f"txitems_{transaction_id}"),
+            InlineKeyboardButton(f"🧾 Ver Lista Completa ({items_count} itens)", callback_data=f"txitems_{transaction_id}"),
             InlineKeyboardButton("💰 Manter Só Total", callback_data=f"txdelitems_{transaction_id}")
         ])
 
@@ -68,11 +68,23 @@ def get_duplicate_confirmation_keyboard(token: str) -> InlineKeyboardMarkup:
     ]
     return InlineKeyboardMarkup(keyboard)
 
-def get_extrato_keyboard() -> InlineKeyboardMarkup:
-    """Teclado de ações para a mensagem de extrato"""
-    keyboard = [
-        [InlineKeyboardButton("🗑️ Excluir Lançamentos Recentes", callback_data="manage_del_tx")]
-    ]
+def get_extrato_keyboard(txs: Optional[List[Any]] = None) -> InlineKeyboardMarkup:
+    """Teclado de ações para a mensagem de extrato com atalhos para ver cupons fiscais recentes"""
+    keyboard = []
+    if txs:
+        for t in txs:
+            c = getattr(t, "items_count", 0)
+            if c > 0:
+                short_desc = t.description[:16] if t.description else "Cupom"
+                keyboard.append([
+                    InlineKeyboardButton(f"🧾 Itens: {short_desc} ({c})", callback_data=f"txitems_{t.id}")
+                ])
+                if len(keyboard) >= 3:
+                    break
+
+    keyboard.append([
+        InlineKeyboardButton("🗑️ Excluir Lançamentos Recentes", callback_data="manage_del_tx")
+    ])
     return InlineKeyboardMarkup(keyboard)
 
 def get_delete_transactions_keyboard(txs) -> InlineKeyboardMarkup:

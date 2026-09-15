@@ -11,7 +11,7 @@ from app.bot.keyboards import (
     get_quick_add_accounts_keyboard, get_manage_accounts_keyboard,
     get_reminders_list_keyboard, get_reminder_pay_account_keyboard
 )
-from app.utils import format_currency_br
+from app.utils import format_currency_br, format_items_list_text
 
 from app.bot.handlers.auth_helper import get_authenticated_bot_user
 
@@ -252,7 +252,13 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             tx = AccountService.set_transaction_account(db, tx_id, acc_id)
             if tx and tx.account:
                 accounts = AccountService.get_accounts(db, ws.id)
-                new_markup = get_accounts_selection_keyboard(tx.id, accounts, tx.account_id)
+                new_markup = get_accounts_selection_keyboard(
+                    tx.id,
+                    accounts,
+                    tx.account_id,
+                    has_items=bool(tx and tx.items_count > 0),
+                    items_count=tx.items_count if tx else 0
+                )
                 try:
                     await query.edit_message_reply_markup(reply_markup=new_markup)
                 except Exception:
@@ -572,24 +578,64 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                         parse_mode="Markdown"
                     )
                 else:
+                    cat_name = tx.category.name if tx.category else "Mercado"
                     lines = [
-                        f"🧾 *Itens Comprados - {tx.description}*",
-                        f"💰 *Total:* {format_currency_br(tx.amount)} | 📅 *Data:* {tx.transaction_date.strftime('%d/%m/%Y')}",
+                        f"🧾 *Cupom Fiscal - {tx.description}*",
+                        f"💰 *Valor Total:* {format_currency_br(tx.amount)} | 📅 *Data:* {tx.transaction_date.strftime('%d/%m/%Y')}",
+                        f"💳 *Conta:* {tx.payment_method} | 🏷️ *Categoria:* {cat_name}",
                         "───────────────────"
                     ]
                     for idx, it in enumerate(items, 1):
                         tot = it.total_price if it.total_price > 0 else (it.quantity * it.unit_price)
-                        unit_str = f" ({it.quantity:g} {it.unit} x {format_currency_br(it.unit_price)})" if it.unit_price > 0 else f" ({it.quantity:g} {it.unit})"
-                        lines.append(f"*{idx}.* {it.name}{unit_str} → *{format_currency_br(tot)}*")
+                        if it.unit_price > 0 and (it.quantity != 1 or it.unit != "un"):
+                            unit_str = f" ({it.quantity:g} {it.unit} x {format_currency_br(it.unit_price)})"
+                        elif it.quantity != 1 or it.unit != "un":
+                            unit_str = f" ({it.quantity:g} {it.unit})"
+                        else:
+                            unit_str = ""
+                        tot_str = f" → *{format_currency_br(tot)}*" if tot > 0 else ""
+                        cat_str = f" _{it.category}_" if it.category and it.category != "Geral" else ""
+                        lines.append(f"*{idx}.* {it.name}{unit_str}{tot_str}{cat_str}")
 
                     lines.append("───────────────────")
-                    lines.append(f"📊 *Total de Itens:* {len(items)} produtos")
+                    lines.append(f"📊 *Total de Produtos:* {len(items)} itens discriminados")
                     from telegram import InlineKeyboardMarkup, InlineKeyboardButton
                     item_markup = InlineKeyboardMarkup([
                         [InlineKeyboardButton("💰 Remover Itens (Manter só Total)", callback_data=f"txdelitems_{tx.id}")],
-                        [InlineKeyboardButton("🔙 Voltar", callback_data="back_to_extrato")]
+                        [InlineKeyboardButton("💳 Alterar Conta Bancária", callback_data=f"txaccmenu_{tx.id}"),
+                         InlineKeyboardButton("🔙 Voltar ao Extrato", callback_data="back_to_extrato")]
                     ])
                     await query.edit_message_text("\n".join(lines), parse_mode="Markdown", reply_markup=item_markup)
+
+        elif data.startswith("txaccmenu_"):
+            tx_id = int(data.split("_")[-1])
+            from app.models import Transaction
+            from app.services.account_service import AccountService
+            from app.bot.keyboards import get_accounts_selection_keyboard
+            tx = db.query(Transaction).filter(Transaction.id == tx_id).first()
+            if tx:
+                accounts = AccountService.get_accounts(db, ws.id)
+                markup = get_accounts_selection_keyboard(
+                    tx.id,
+                    accounts,
+                    tx.account_id,
+                    has_items=bool(tx.items_count > 0),
+                    items_count=tx.items_count
+                )
+                summary = FinanceService.get_monthly_summary(db, ws.id)
+                saldo_emoji = "🟢" if summary["net_balance"] >= 0 else "🔴"
+                tipo_icon = "🟢 Entrada" if tx.type == "income" else "🔴 Saída"
+                cat_name = tx.category.name if tx.category else "Outros"
+                msg = (
+                    f"🧾 *Lançamento Selecionado:*\n\n"
+                    f"{tipo_icon}: *{format_currency_br(tx.amount)}* ({tx.description})\n"
+                    f"🏷️ Categoria: _{cat_name}_ • 💳 Conta: *{tx.payment_method}*\n"
+                    f"🛒 Itens: *{tx.items_count} produtos discriminados*\n\n"
+                    f"📍 *Perfil:* `{ws.name}`\n"
+                    f"{saldo_emoji} *Novo Saldo do Mês:* {format_currency_br(summary['net_balance'])}\n\n"
+                    f"👇 *Selecione ou troque a conta bancária/cartão abaixo:*"
+                )
+                await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=markup)
 
         elif data.startswith("txdelitems_"):
             tx_id = int(data.split("_")[-1])
@@ -619,7 +665,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                     dt = t.transaction_date.strftime("%d/%m")
                     items_badge = f" • 🛒 {t.items_count} itens" if t.items_count > 0 else ""
                     msg += f"{icon} *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 💳 _{t.payment_method}_ • 📅 _{dt}_\n\n"
-                await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_extrato_keyboard())
+                await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=get_extrato_keyboard(txs))
 
         elif data.startswith("dup_confirm_"):
             token = data.replace("dup_confirm_", "")
@@ -663,8 +709,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
 
                 item_line = f"{tipo_icon}: *{format_currency_br(tx.amount)}* ({tx.description})\n🏷️ Categoria: _{cat_name}_ • 💳 Conta: *{acc_name}*"
                 if tx.items_count > 0:
-                    sample_items = [it.name for it in tx.items[:3]]
-                    item_line += f"\n🛒 *{tx.items_count} itens incluídos:* " + ", ".join(sample_items) + ("..." if tx.items_count > 3 else "")
+                    item_line += format_items_list_text(tx.items, max_items=25)
 
                 msg = (
                     f"✅ *Lançamento Cadastrado com Sucesso (Duplicidade Confirmada)!*\n\n"

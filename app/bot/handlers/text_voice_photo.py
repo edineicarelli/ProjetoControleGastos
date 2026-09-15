@@ -14,7 +14,7 @@ from app.services.vehicle_service import VehicleService
 from app.services.shopping_service import ShoppingService
 from app.bot.keyboards import get_dashboard_link_keyboard, get_profile_inline_keyboard, get_main_reply_keyboard
 from app.bot.handlers.auth_helper import get_authenticated_bot_user
-from app.utils import format_currency_br, format_number_br
+from app.utils import format_currency_br, format_number_br, format_items_list_text
 
 logger = logging.getLogger(__name__)
 
@@ -186,19 +186,15 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
 
-        if any(w in text_lower for w in ["ver itens", "itens do cupom", "itens do mercado", "itens da compra", "produtos do cupom", "cupom fiscal", "mostrar itens", "quais itens", "detalhes do cupom", "ver cupom"]):
+        if any(w in text_lower for w in ["ver itens", "itens do cupom", "itens do mercado", "itens da compra", "produtos do cupom", "cupom fiscal", "mostrar itens", "quais itens", "detalhes do cupom", "ver cupom", "lista do cupom", "listar itens", "meus cupons"]):
             from app.models import Transaction
             tx_with_items = db.query(Transaction).filter(
                 Transaction.workspace_id == ws.id
             ).order_by(Transaction.transaction_date.desc(), Transaction.id.desc()).all()
             
-            target_tx = None
-            for t in tx_with_items:
-                if t.items and len(t.items) > 0:
-                    target_tx = t
-                    break
+            recent_with_items = [t for t in tx_with_items if t.items and len(t.items) > 0]
             
-            if not target_tx:
+            if not recent_with_items:
                 await update.message.reply_text(
                     "🛒 *Nenhum cupom fiscal ou compra com itens detalhados foi encontrado neste perfil.*\n\n"
                     "💡 Ao enviar a foto de um cupom de mercado ou cadastrar uma compra com itens, você poderá consultá-los aqui a qualquer momento!",
@@ -206,25 +202,44 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return
 
+            target_tx = recent_with_items[0]
             items = target_tx.items
             lines = [
-                f"🧾 *Itens Comprados - {target_tx.description}*",
+                f"🧾 *Cupom Fiscal - {target_tx.description}*",
                 f"💰 *Valor Total Pago:* {format_currency_br(target_tx.amount)}",
                 f"📅 *Data:* {target_tx.transaction_date.strftime('%d/%m/%Y')} • 🏷️ *Categoria:* {target_tx.category.name if target_tx.category else 'Mercado'}",
                 "───────────────────"
             ]
             for idx, it in enumerate(items, 1):
                 tot = it.total_price if it.total_price > 0 else (it.quantity * it.unit_price)
-                unit_str = f" ({it.quantity:g} {it.unit} x {format_currency_br(it.unit_price)})" if it.unit_price > 0 else f" ({it.quantity:g} {it.unit})"
-                lines.append(f"*{idx}.* {it.name}{unit_str} → *{format_currency_br(tot)}*")
+                if it.unit_price > 0 and (it.quantity != 1 or it.unit != "un"):
+                    unit_str = f" ({it.quantity:g} {it.unit} x {format_currency_br(it.unit_price)})"
+                elif it.quantity != 1 or it.unit != "un":
+                    unit_str = f" ({it.quantity:g} {it.unit})"
+                else:
+                    unit_str = ""
+                tot_str = f" → *{format_currency_br(tot)}*" if tot > 0 else ""
+                cat_str = f" _{it.category}_" if it.category and it.category != "Geral" else ""
+                lines.append(f"*{idx}.* {it.name}{unit_str}{tot_str}{cat_str}")
 
             lines.append("───────────────────")
             lines.append(f"📊 *Total de Produtos:* {len(items)} itens discriminados")
             from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-            item_markup = InlineKeyboardMarkup([
-                [InlineKeyboardButton("💰 Manter Só Total (Remover Itens)", callback_data=f"txdelitems_{target_tx.id}")],
-                [InlineKeyboardButton("🔙 Voltar ao Extrato", callback_data="back_to_extrato")]
+            
+            buttons = []
+            if len(recent_with_items) > 1:
+                other_btns = []
+                for other in recent_with_items[1:4]:
+                    short_title = other.description[:14] if other.description else "Cupom"
+                    other_btns.append(InlineKeyboardButton(f"🧾 {short_title}", callback_data=f"txitems_{other.id}"))
+                if other_btns:
+                    buttons.append(other_btns)
+
+            buttons.append([
+                InlineKeyboardButton("💰 Manter Só Total (Remover Itens)", callback_data=f"txdelitems_{target_tx.id}"),
+                InlineKeyboardButton("🔙 Voltar ao Extrato", callback_data="back_to_extrato")
             ])
+            item_markup = InlineKeyboardMarkup(buttons)
             await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=item_markup)
             return
 
@@ -693,8 +708,7 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
             acc_name = tx.payment_method
             item_line = f"{tipo_icon}: *{format_currency_br(tx.amount)}* ({t.description})\n🏷️ Categoria: _{cat_name}_ • 💳 Conta: *{acc_name}*"
             if tx.items_count > 0:
-                sample_items = [it.name for it in tx.items[:3]]
-                item_line += f"\n🛒 *{tx.items_count} itens incluídos:* " + ", ".join(sample_items) + ("..." if tx.items_count > 3 else "")
+                item_line += format_items_list_text(tx.items, max_items=25)
             saved_items.append(item_line)
 
         # Caso todos os itens enviados sejam duplicados em lote

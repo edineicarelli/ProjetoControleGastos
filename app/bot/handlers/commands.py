@@ -160,9 +160,10 @@ async def extrato_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             icon = "🟢 +" if t.type == "income" else "🔴 -"
             cat = t.category.name if t.category else "Outros"
             dt = t.transaction_date.strftime("%d/%m")
-            msg += f"{icon} *{format_currency_br(t.amount)}* | {t.description}\n   🏷️ _{cat}_ • 💳 _{t.payment_method}_ • 📅 _{dt}_\n\n"
+            items_badge = f" • 🛒 {t.items_count} itens" if t.items_count > 0 else ""
+            msg += f"{icon} *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 💳 _{t.payment_method}_ • 📅 _{dt}_\n\n"
 
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=get_extrato_keyboard())
+        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=get_extrato_keyboard(txs))
     finally:
         db.close()
 
