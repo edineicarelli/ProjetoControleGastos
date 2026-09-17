@@ -9,7 +9,7 @@
     encode gzip zstd
 
     # Roteia todas as requisições (HTTP, HTTPS, WebSockets) para a aplicação
-    reverse_proxy finance-control:8000 {
+    reverse_proxy finance-control:8085 {
         # Configurações de cabeçalhos
         header_up Host {host}
         header_up X-Real-IP {remote_host}

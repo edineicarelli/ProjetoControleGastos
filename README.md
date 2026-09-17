@@ -114,8 +114,8 @@ python -m app.main
 ```
 
 O servidor estará disponível em:
-- **Dashboard Web**: `http://localhost:8000/dashboard` (ou `http://localhost:8085/dashboard` em produção Docker)
-- **Documentação da API (Swagger)**: `http://localhost:8000/docs`
+- **Dashboard Web**: `http://localhost:8085/dashboard`
+- **Documentação da API (Swagger)**: `http://localhost:8085/docs`
 
 
 ---

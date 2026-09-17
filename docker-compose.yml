@@ -11,14 +11,14 @@ services:
     container_name: controle_gastos_app
     restart: unless-stopped
     ports:
-      - "${PORT:-8085}:8000"
+      - "${PORT:-8085}:8085"
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
       GEMINI_API_KEY: ${GEMINI_API_KEY}
       DATABASE_URL: "sqlite:////app/data/finance_control.db"
       HOST: "0.0.0.0"
-      PORT: "8000"
-      BASE_URL: ${BASE_URL:-https://localhost}
+      PORT: "8085"
+      BASE_URL: ${BASE_URL:-http://localhost:8085}
       DEFAULT_CURRENCY: "R$"
       DEFAULT_TIMEZONE: "America/Sao_Paulo"
       UPLOAD_DIR: "/app/uploads"
@@ -26,7 +26,7 @@ services:
       - finance_data:/app/data
       - finance_uploads:/app/uploads
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8000/dashboard || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8085/dashboard || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3

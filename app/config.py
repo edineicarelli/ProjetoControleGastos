@@ -7,8 +7,8 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = "SUA_GEMINI_API_KEY_AQUI"
     DATABASE_URL: str = "sqlite:///./finance_control.db"
     HOST: str = "0.0.0.0"
-    PORT: int = 8000
-    BASE_URL: str = "http://localhost:8000"
+    PORT: int = 8085
+    BASE_URL: str = "http://localhost:8085"
     DEFAULT_CURRENCY: str = "R$"
     DEFAULT_TIMEZONE: str = "America/Sao_Paulo"
     

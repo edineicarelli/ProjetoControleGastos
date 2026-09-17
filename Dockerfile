@@ -29,11 +29,11 @@ COPY . /app
 RUN mkdir -p /app/data /app/uploads/audio /app/uploads/receipts /app/uploads/exports /app/uploads/documents
 
 # Expõe porta do Dashboard Web
-EXPOSE 8000
+EXPOSE 8085
 
 # Healthcheck para monitoramento no Portainer
 HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
-  CMD curl -f http://localhost:8000/dashboard || exit 1
+  CMD curl -f http://localhost:8085/dashboard || exit 1
 
 # Comando de inicialização (FastAPI + Bot Telegram + APScheduler)
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8085"]
