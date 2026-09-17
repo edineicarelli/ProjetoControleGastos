@@ -44,7 +44,7 @@ async def lifespan(app: FastAPI):
     else:
         logger.warning("Bot do Telegram não iniciado. Verifique o TELEGRAM_BOT_TOKEN no .env")
 
-    # 3. Inicia o agendador de lembretes e contas
+    # 3. Inicia o agendador de lembretes e rotina de backups
     try:
         scheduler.add_job(
             ReminderService.check_and_send_due_reminders,
@@ -54,8 +54,12 @@ async def lifespan(app: FastAPI):
             id="due_reminders_check",
             replace_existing=True
         )
+
+        from app.services.backup_service import BackupService
+        BackupService.setup_scheduled_job(scheduler)
+
         scheduler.start()
-        logger.info("Agendador APScheduler iniciado (verificação a cada 30min).")
+        logger.info("Agendador APScheduler iniciado (Lembretes a cada 30min e Backups configurados).")
     except Exception as e:
         logger.error(f"Erro ao iniciar APScheduler: {e}")
 

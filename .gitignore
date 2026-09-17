@@ -38,3 +38,7 @@ uploads/documents/*
 .pytest_cache/
 *.log
 scratch/
+
+# Local data & backups
+data/backups/*
+!data/backups/.gitkeep

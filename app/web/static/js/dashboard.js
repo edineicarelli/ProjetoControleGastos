@@ -894,17 +894,20 @@ function switchConfigSubTab(tabName) {
     const secSystemUsers = document.getElementById('config-section-system-users');
     const secUsers = document.getElementById('config-section-users');
     const secTokens = document.getElementById('config-section-tokens');
+    const secBackups = document.getElementById('config-section-backups');
     
     const btnProfiles = document.getElementById('btn-config-profiles');
     const btnSystemUsers = document.getElementById('btn-config-system-users');
     const btnUsers = document.getElementById('btn-config-users');
     const btnTokens = document.getElementById('btn-config-tokens');
+    const btnBackups = document.getElementById('btn-config-backups');
 
     // Reset all tabs
     if (secProfiles) secProfiles.style.display = 'none';
     if (secSystemUsers) secSystemUsers.style.display = 'none';
     if (secUsers) secUsers.style.display = 'none';
     if (secTokens) secTokens.style.display = 'none';
+    if (secBackups) secBackups.style.display = 'none';
 
     const inactiveBtn = (btn) => {
         if (!btn) return;
@@ -924,6 +927,7 @@ function switchConfigSubTab(tabName) {
     inactiveBtn(btnSystemUsers);
     inactiveBtn(btnUsers);
     inactiveBtn(btnTokens);
+    inactiveBtn(btnBackups);
 
     if (tabName === 'system-users') {
         if (secSystemUsers) secSystemUsers.style.display = 'flex';
@@ -935,6 +939,11 @@ function switchConfigSubTab(tabName) {
         if (secTokens) secTokens.style.display = 'flex';
         activeBtn(btnTokens);
         if (typeof loadSystemTokens === 'function') loadSystemTokens();
+    } else if (tabName === 'backups') {
+        if (secBackups) secBackups.style.display = 'flex';
+        activeBtn(btnBackups);
+        if (typeof loadBackupConfig === 'function') loadBackupConfig();
+        if (typeof loadBackupList === 'function') loadBackupList();
     } else {
         if (secProfiles) secProfiles.style.display = 'flex';
         activeBtn(btnProfiles);
@@ -3657,6 +3666,523 @@ window.filterTransactionsAdvanced = filterTransactionsAdvanced;
 window.quickFilterAccount = quickFilterAccount;
 window.resetTxFilters = resetTxFilters;
 window.filterByAccountFromAccountsTab = filterByAccountFromAccountsTab;
+
+/* ========================================================
+   GESTÃO DE BACKUPS, AGENDAMENTO, RETENÇÃO E RESTAURAÇÃO
+   ======================================================== */
+
+function toggleBackupScheduleFields() {
+    const isScheduled = document.getElementById('cfgBackupScheduled')?.checked;
+    const container = document.getElementById('backupScheduleFieldsContainer');
+    if (container) {
+        container.style.opacity = isScheduled ? '1' : '0.45';
+        container.style.pointerEvents = isScheduled ? 'auto' : 'none';
+    }
+}
+
+function handleBackupFrequencyChange() {
+    const freq = document.getElementById('cfgBackupFrequency')?.value || 'daily';
+    const grpHours = document.getElementById('groupBackupHours');
+    const grpDailyTime = document.getElementById('groupBackupDailyTime');
+    const grpWeeklyDay = document.getElementById('groupBackupWeeklyDay');
+
+    if (grpHours) grpHours.style.display = (freq === 'hours') ? 'block' : 'none';
+    if (grpDailyTime) grpDailyTime.style.display = (freq !== 'hours') ? 'block' : 'none';
+    if (grpWeeklyDay) grpWeeklyDay.style.display = (freq === 'weekly') ? 'block' : 'none';
+}
+
+function toggleNetworkPathField() {
+    const isNet = document.getElementById('cfgDestNetwork')?.checked;
+    const divNet = document.getElementById('divNetworkPath');
+    if (divNet) divNet.style.display = isNet ? 'block' : 'none';
+}
+
+function toggleCloudConfigField() {
+    const isCloud = document.getElementById('cfgDestCloud')?.checked;
+    const divCloud = document.getElementById('divCloudConfig');
+    if (divCloud) divCloud.style.display = isCloud ? 'block' : 'none';
+}
+
+function handleRetentionChange() {
+    const retVal = document.getElementById('cfgBackupRetentionDays')?.value;
+    const divCustom = document.getElementById('divCustomRetentionDays');
+    if (divCustom) divCustom.style.display = (retVal === 'custom') ? 'block' : 'none';
+}
+
+async function loadBackupConfig() {
+    try {
+        const res = await fetch('/api/backup/config');
+        if (!res.ok) {
+            if (res.status === 403) return; // Não é admin
+            throw new Error('Falha ao carregar configurações de backup');
+        }
+        const data = await res.json();
+        if (!data.success) return;
+
+        const chkSched = document.getElementById('cfgBackupScheduled');
+        if (chkSched) chkSched.checked = Boolean(data.is_scheduled);
+
+        const selFreq = document.getElementById('cfgBackupFrequency');
+        if (selFreq) selFreq.value = data.frequency_type || 'daily';
+
+        const selHours = document.getElementById('cfgBackupIntervalHours');
+        if (selHours) selHours.value = String(data.interval_hours || 24);
+
+        const inpDailyTime = document.getElementById('cfgBackupDailyTime');
+        if (inpDailyTime) inpDailyTime.value = data.daily_time || '03:00';
+
+        const selWeeklyDay = document.getElementById('cfgBackupWeeklyDay');
+        if (selWeeklyDay) selWeeklyDay.value = String(data.weekly_day !== undefined ? data.weekly_day : 6);
+
+        // Destinos
+        const dests = data.storage_destinations || ['local'];
+        const chkLocal = document.getElementById('cfgDestLocal');
+        if (chkLocal) chkLocal.checked = dests.includes('local');
+
+        const chkNet = document.getElementById('cfgDestNetwork');
+        if (chkNet) chkNet.checked = dests.includes('network');
+
+        const chkCloud = document.getElementById('cfgDestCloud');
+        if (chkCloud) chkCloud.checked = (dests.includes('gdrive') || dests.includes('onedrive') || dests.includes('cloud') || dests.includes('webhook'));
+
+        const inpNetPath = document.getElementById('cfgBackupNetworkPath');
+        if (inpNetPath) inpNetPath.value = data.network_path || '';
+
+        const inpNetUser = document.getElementById('cfgBackupNetworkUsername');
+        if (inpNetUser) inpNetUser.value = data.network_username || '';
+
+        const inpNetPass = document.getElementById('cfgBackupNetworkPassword');
+        if (inpNetPass) inpNetPass.value = data.network_password || '';
+
+        const inpNetDom = document.getElementById('cfgBackupNetworkDomain');
+        if (inpNetDom) inpNetDom.value = data.network_domain || '';
+
+        const selCloudProv = document.getElementById('cfgBackupCloudProvider');
+        if (selCloudProv) selCloudProv.value = data.cloud_provider || 'gdrive';
+
+        const inpCloudCfg = document.getElementById('cfgBackupCloudConfig');
+        if (inpCloudCfg) inpCloudCfg.value = data.cloud_config || '';
+
+        const chkIncUploads = document.getElementById('cfgBackupIncludeUploads');
+        if (chkIncUploads) chkIncUploads.checked = Boolean(data.include_uploads !== false);
+
+        // Retenção
+        const selRet = document.getElementById('cfgBackupRetentionDays');
+        const inpCustRet = document.getElementById('cfgBackupCustomRetention');
+        const standardDays = ['1', '2', '3', '5', '7', '10', '15', '20', '30', '60', '90'];
+        const currentDaysStr = String(data.retention_days || 30);
+
+        if (standardDays.includes(currentDaysStr)) {
+            if (selRet) selRet.value = currentDaysStr;
+        } else {
+            if (selRet) selRet.value = 'custom';
+            if (inpCustRet) inpCustRet.value = currentDaysStr;
+        }
+
+        // Atualiza campos dinâmicos
+        toggleBackupScheduleFields();
+        handleBackupFrequencyChange();
+        toggleNetworkPathField();
+        toggleCloudConfigField();
+        handleRetentionChange();
+
+        // Resumo do Status
+        const summaryEl = document.getElementById('backupStatusSummary');
+        if (summaryEl) {
+            const lastAt = data.last_backup_at ? `Último: <b>${data.last_backup_at}</b>` : 'Nenhum backup recente';
+            const statusColor = data.last_status === 'success' ? '#34d399' : (data.last_status === 'failed' ? '#ef4444' : '#94a3b8');
+            const schedText = data.is_scheduled ? '🟢 Agendamento Ativo' : '⚪ Agendamento Inativo';
+            summaryEl.innerHTML = `${lastAt} &bull; <span style="color: ${statusColor}; font-weight: 600;">● ${data.last_status || 'Pronto'}</span> &bull; ${schedText} &bull; Retenção: ${data.retention_days} dias`;
+        }
+
+    } catch (err) {
+        console.error('Erro ao carregar configurações de backup:', err);
+    }
+}
+
+async function testNetworkBackupConnection() {
+    const btn = document.getElementById('btnTestNetworkBackup');
+    const resultEl = document.getElementById('networkTestResult');
+    const badgeEl = document.getElementById('networkStatusBadge');
+    const network_path = document.getElementById('cfgBackupNetworkPath')?.value?.trim();
+    const network_username = document.getElementById('cfgBackupNetworkUsername')?.value?.trim();
+    const network_password = document.getElementById('cfgBackupNetworkPassword')?.value;
+    const network_domain = document.getElementById('cfgBackupNetworkDomain')?.value?.trim();
+
+    if (!network_path) {
+        showToast('Por favor, informe o caminho de rede antes de testar.', 'warning');
+        if (resultEl) {
+            resultEl.style.display = 'block';
+            resultEl.style.background = 'rgba(239, 68, 68, 0.15)';
+            resultEl.style.color = '#fca5a5';
+            resultEl.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+            resultEl.innerHTML = '⚠️ Informe o caminho do diretório ou pasta compartilhada de rede.';
+        }
+        return;
+    }
+
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ <span>Testando Conexão...</span>';
+    }
+    if (badgeEl) badgeEl.innerHTML = '<span style="color: #fbbf24;">● Verificando...</span>';
+
+    try {
+        const res = await fetch('/api/backup/test-network', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                network_path,
+                network_username,
+                network_password,
+                network_domain
+            })
+        });
+
+        const data = await res.json();
+        if (resultEl) resultEl.style.display = 'block';
+
+        if (res.ok && data.success) {
+            if (resultEl) {
+                resultEl.style.background = 'rgba(16, 185, 129, 0.15)';
+                resultEl.style.color = '#6ee7b7';
+                resultEl.style.border = '1px solid rgba(16, 185, 129, 0.4)';
+                let spaceInfo = '';
+                if (data.free_space_gb !== undefined) {
+                    spaceInfo = `<br><span style="color: #fff; font-weight: 600;">📊 Espaço em Disco:</span> ${data.free_space_gb} GB livres de ${data.total_space_gb} GB (${data.used_percent}% em uso)`;
+                }
+                resultEl.innerHTML = `✅ <b>${data.message}</b>${spaceInfo}`;
+            }
+            if (badgeEl) badgeEl.innerHTML = '<span style="color: #34d399; font-weight: 600;">🟢 Conectado & Verificado</span>';
+            showToast('Destino de rede testado e pronto para uso!', 'success');
+        } else {
+            if (resultEl) {
+                resultEl.style.background = 'rgba(239, 68, 68, 0.15)';
+                resultEl.style.color = '#fca5a5';
+                resultEl.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+                resultEl.innerHTML = `❌ <b>Falha na conexão:</b> ${data.message || data.error || 'Não foi possível acessar o caminho especificado.'}`;
+            }
+            if (badgeEl) badgeEl.innerHTML = '<span style="color: #ef4444; font-weight: 600;">🔴 Inacessível</span>';
+            showToast('Falha no teste de rede. Verifique os dados informados.', 'error');
+        }
+
+    } catch (err) {
+        if (resultEl) {
+            resultEl.style.display = 'block';
+            resultEl.style.background = 'rgba(239, 68, 68, 0.15)';
+            resultEl.style.color = '#fca5a5';
+            resultEl.style.border = '1px solid rgba(239, 68, 68, 0.4)';
+            resultEl.innerHTML = `❌ <b>Erro na requisição:</b> ${err.message}`;
+        }
+        if (badgeEl) badgeEl.innerHTML = '<span style="color: #ef4444; font-weight: 600;">🔴 Erro</span>';
+        showToast('Erro ao testar rede: ' + err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🧪 <span>Testar Conexão com a Rede</span>';
+        }
+    }
+}
+
+async function saveBackupSettings(e) {
+    if (e) e.preventDefault();
+    const btn = document.getElementById('btnSaveBackupSettings');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '💾 <span>Salvando preferências...</span>';
+    }
+
+    try {
+        const is_scheduled = document.getElementById('cfgBackupScheduled')?.checked || false;
+        const frequency_type = document.getElementById('cfgBackupFrequency')?.value || 'daily';
+        const interval_hours = parseInt(document.getElementById('cfgBackupIntervalHours')?.value || '24', 10);
+        const daily_time = document.getElementById('cfgBackupDailyTime')?.value || '03:00';
+        const weekly_day = parseInt(document.getElementById('cfgBackupWeeklyDay')?.value || '6', 10);
+
+        // Destinos
+        const destinations = [];
+        if (document.getElementById('cfgDestLocal')?.checked) destinations.push('local');
+        if (document.getElementById('cfgDestNetwork')?.checked) destinations.push('network');
+        if (document.getElementById('cfgDestCloud')?.checked) {
+            const provider = document.getElementById('cfgBackupCloudProvider')?.value || 'gdrive';
+            destinations.push(provider);
+        }
+        if (destinations.length === 0) {
+            destinations.push('local');
+        }
+
+        const network_path = document.getElementById('cfgBackupNetworkPath')?.value?.trim() || null;
+        const network_username = document.getElementById('cfgBackupNetworkUsername')?.value?.trim() || null;
+        const network_password = document.getElementById('cfgBackupNetworkPassword')?.value || null;
+        const network_domain = document.getElementById('cfgBackupNetworkDomain')?.value?.trim() || null;
+
+        const cloud_provider = document.getElementById('cfgBackupCloudProvider')?.value || 'gdrive';
+        const cloud_config = document.getElementById('cfgBackupCloudConfig')?.value?.trim() || null;
+        const include_uploads = document.getElementById('cfgBackupIncludeUploads')?.checked || true;
+
+        // Retenção
+        let retention_days = 30;
+        const selRet = document.getElementById('cfgBackupRetentionDays')?.value;
+        if (selRet === 'custom') {
+            retention_days = parseInt(document.getElementById('cfgBackupCustomRetention')?.value || '30', 10);
+        } else {
+            retention_days = parseInt(selRet || '30', 10);
+        }
+
+        const payload = {
+            is_scheduled,
+            frequency_type,
+            interval_hours,
+            daily_time,
+            weekly_day,
+            storage_destinations: destinations,
+            network_path,
+            network_username,
+            network_password,
+            network_domain,
+            cloud_provider,
+            cloud_config,
+            retention_days,
+            include_uploads
+        };
+
+        const res = await fetch('/api/backup/config', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+            throw new Error(data.detail || 'Erro ao salvar preferências de backup.');
+        }
+
+        showToast(data.message || 'Configurações de backup salvas com sucesso!', 'success');
+        loadBackupConfig();
+
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '💾 <span>Salvar Preferências de Backup</span>';
+        }
+    }
+}
+
+async function loadBackupList() {
+    const tbody = document.getElementById('backupListTableBody');
+    if (!tbody) return;
+
+    try {
+        const res = await fetch('/api/backup/list');
+        if (!res.ok) throw new Error('Falha ao listar backups');
+        const data = await res.json();
+
+        if (!data.success || !data.backups || data.backups.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 1.5rem;">
+                        Nenhuma cópia de segurança registrada até o momento. Clique em <b>🚀 Criar Backup Agora</b> para gerar a primeira.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        let html = '';
+        data.backups.forEach(b => {
+            const statusBadge = b.status === 'success' 
+                ? '<span style="color: #34d399; font-weight: 600;">✅ Sucesso</span>' 
+                : '<span style="color: #ef4444; font-weight: 600;">❌ Falhou</span>';
+
+            const typeBadge = b.backup_type === 'scheduled' 
+                ? '<span class="status-badge" style="background: rgba(99,102,241,0.15); color: #818cf8; font-size: 0.72rem; padding: 2px 6px;">⏰ Agendado</span>' 
+                : '<span class="status-badge" style="background: rgba(16,185,129,0.15); color: #34d399; font-size: 0.72rem; padding: 2px 6px;">🚀 Manual</span>';
+
+            const destsStr = (b.destinations || []).map(d => {
+                if (d === 'local') return '🖥️ Local';
+                if (d === 'network') return '🌐 Rede';
+                if (d === 'gdrive') return '☁️ GDrive';
+                if (d === 'onedrive') return '☁️ OneDrive';
+                return `☁️ ${d}`;
+            }).join(', ') || 'Local';
+
+            html += `
+                <tr style="border-bottom: 1px solid rgba(255,255,255,0.04);">
+                    <td style="white-space: nowrap;">${b.created_at}</td>
+                    <td style="font-family: monospace; font-size: 0.8rem; color: #fff; max-width: 180px; overflow: hidden; text-overflow: ellipsis;" title="${b.filename}">
+                        ${b.filename}
+                    </td>
+                    <td style="font-weight: 600; color: #cbd5e1;">${b.file_size_formatted}</td>
+                    <td>${typeBadge}</td>
+                    <td style="font-size: 0.76rem; color: var(--text-muted);">${destsStr}</td>
+                    <td>${statusBadge}</td>
+                    <td style="text-align: right; white-space: nowrap;">
+                        <a href="/api/backup/download/${b.id}" class="btn-action" title="Fazer Download do Backup (.zip)" style="display: inline-flex; align-items: center; text-decoration: none; padding: 4px 6px; font-size: 0.95rem;">
+                            ⬇️
+                        </a>
+                        <button type="button" class="btn-action" onclick="restoreBackup(${b.id}, '${b.filename}')" title="Restaurar este Backup no Sistema" style="padding: 4px 6px; font-size: 0.95rem; color: #fbbf24;">
+                            🔄
+                        </button>
+                        <button type="button" class="btn-action delete" onclick="deleteBackup(${b.id}, '${b.filename}')" title="Excluir Cópia de Segurança" style="padding: 4px 6px; font-size: 0.95rem;">
+                            🗑️
+                        </button>
+                    </td>
+                </tr>
+            `;
+        });
+
+        tbody.innerHTML = html;
+
+    } catch (err) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="7" style="text-align: center; color: #ef4444; padding: 1.5rem;">
+                    Erro ao carregar lista de backups: ${err.message}
+                </td>
+            </tr>
+        `;
+    }
+}
+
+async function createBackupNow() {
+    const btn = document.getElementById('btnCreateBackupNow');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳ Gerando Backup...</span>';
+    }
+
+    try {
+        const res = await fetch('/api/backup/create', { method: 'POST' });
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.detail || 'Erro ao gerar backup manual.');
+        }
+
+        showToast(data.message || 'Cópia de segurança gerada com sucesso!', 'success');
+        loadBackupConfig();
+        loadBackupList();
+
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>🚀 Criar Backup Agora</span>';
+        }
+    }
+}
+
+async function deleteBackup(backupId, filename) {
+    if (!confirm(`Deseja realmente excluir a cópia de segurança '${filename}'?\nEsta ação não poderá ser desfeita.`)) {
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/backup/${backupId}`, { method: 'DELETE' });
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.detail || 'Erro ao excluir backup.');
+        }
+
+        showToast(data.message || 'Backup excluído com sucesso.', 'success');
+        loadBackupList();
+
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function restoreBackup(backupId, filename) {
+    const confirmMsg = `⚠️ ATENÇÃO: RESTAURAÇÃO DE SISTEMA!\n\nVocê selecionou o backup: '${filename}'.\n\nA restauração irá substituir os dados atuais pelos dados contidos neste backup.\n(Um ponto de segurança prévio será gerado automaticamente antes de aplicar).\n\nDeseja prosseguir com a restauração agora?`;
+    if (!confirm(confirmMsg)) {
+        return;
+    }
+
+    try {
+        showToast('Iniciando restauração do sistema... Aguarde.', 'warning');
+        const res = await fetch(`/api/backup/restore/${backupId}`, { method: 'POST' });
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.detail || 'Erro ao restaurar backup.');
+        }
+
+        showToast(data.message || 'Sistema restaurado com sucesso! Atualizando...', 'success');
+        setTimeout(() => {
+            window.location.reload();
+        }, 1800);
+
+    } catch (err) {
+        showToast(err.message, 'error');
+    }
+}
+
+async function handleUploadRestoreBackup(e) {
+    if (e) e.preventDefault();
+    const fileInput = document.getElementById('backupUploadFileInput');
+    if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
+        showToast('Selecione um arquivo .zip ou .db para restauração.', 'warning');
+        return;
+    }
+
+    const file = fileInput.files[0];
+    if (!confirm(`Deseja fazer upload e restaurar o backup '${file.name}' no sistema?`)) {
+        return;
+    }
+
+    const btn = document.getElementById('btnUploadRestore');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳ Restaurando arquivo...</span>';
+    }
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+        const res = await fetch('/api/backup/upload-restore', {
+            method: 'POST',
+            body: formData
+        });
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.detail || 'Falha ao restaurar arquivo enviado.');
+        }
+
+        showToast(data.message || 'Backup restaurado com sucesso! Reiniciando painel...', 'success');
+        setTimeout(() => {
+            window.location.reload();
+        }, 1800);
+
+    } catch (err) {
+        showToast(err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '🔄 <span>Upload & Restaurar</span>';
+        }
+    }
+}
+
+window.toggleBackupScheduleFields = toggleBackupScheduleFields;
+window.handleBackupFrequencyChange = handleBackupFrequencyChange;
+window.toggleNetworkPathField = toggleNetworkPathField;
+window.toggleCloudConfigField = toggleCloudConfigField;
+window.handleRetentionChange = handleRetentionChange;
+window.loadBackupConfig = loadBackupConfig;
+window.saveBackupSettings = saveBackupSettings;
+window.loadBackupList = loadBackupList;
+window.createBackupNow = createBackupNow;
+window.deleteBackup = deleteBackup;
+window.restoreBackup = restoreBackup;
+window.handleUploadRestoreBackup = handleUploadRestoreBackup;
+window.testNetworkBackupConnection = testNetworkBackupConnection;
+
 
 
 

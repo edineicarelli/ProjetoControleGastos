@@ -7,6 +7,7 @@ from app.models.reminder import Reminder
 from app.models.goal import Goal
 from app.models.vehicle import Vehicle, VehicleMaintenance
 from app.models.shopping import ShoppingList, ShoppingItem
+from app.models.backup import BackupConfig, BackupRecord
 
 __all__ = [
     "User",
@@ -21,5 +22,7 @@ __all__ = [
     "Vehicle",
     "VehicleMaintenance",
     "ShoppingList",
-    "ShoppingItem"
+    "ShoppingItem",
+    "BackupConfig",
+    "BackupRecord"
 ]

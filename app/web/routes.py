@@ -687,6 +687,169 @@ async def api_remove_workspace_member(workspace_id: int, user_id: int, db: Sessi
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
 
+# =========================================================================
+# ROTAS DE GESTÃO DE BACKUP E SEGURANÇA (EXCLUSIVO ADMINISTRADOR)
+# =========================================================================
+
+@router.get("/api/backup/config")
+async def api_get_backup_config(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Retorna as configurações atuais de backup e agendamento"""
+    from app.services.backup_service import BackupService
+    config = BackupService.get_or_create_config(db)
+    try:
+        dest_list = json.loads(config.storage_destinations or '["local"]')
+    except Exception:
+        dest_list = ["local"]
+
+    return {
+        "success": True,
+        "is_scheduled": bool(config.is_scheduled),
+        "frequency_type": config.frequency_type or "daily",
+        "interval_hours": config.interval_hours or 24,
+        "daily_time": config.daily_time or "03:00",
+        "weekly_day": config.weekly_day if config.weekly_day is not None else 6,
+        "storage_destinations": dest_list,
+        "local_path": config.local_path or "",
+        "network_path": config.network_path or "",
+        "network_username": config.network_username or "",
+        "network_password": config.network_password or "",
+        "network_domain": config.network_domain or "",
+        "cloud_provider": config.cloud_provider or "gdrive",
+        "cloud_config": config.cloud_config or "",
+        "retention_days": config.retention_days or 30,
+        "include_uploads": bool(config.include_uploads),
+        "last_backup_at": config.last_backup_at.strftime("%d/%m/%Y %H:%M:%S") if config.last_backup_at else None,
+        "last_status": config.last_status or "ready",
+        "last_error": config.last_error
+    }
+
+@router.post("/api/backup/config")
+async def api_update_backup_config(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Salva novas configurações de backup e reconfigura o agendador APScheduler"""
+    from app.services.backup_service import BackupService
+    from app.main import scheduler
+    data = await request.json()
+    config = BackupService.update_config(db, data)
+    
+    try:
+        BackupService.setup_scheduled_job(scheduler)
+    except Exception as e:
+        logger.warning(f"Erro ao atualizar agendador: {e}")
+
+    return {"success": True, "message": "Configurações de backup salvas com sucesso!"}
+
+@router.post("/api/backup/test-network")
+async def api_test_backup_network(
+    request: Request,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Testa a conectividade, permissão de gravação e integridade com o destino de rede"""
+    from app.services.backup_service import BackupService
+    data = await request.json()
+    network_path = data.get("network_path")
+    username = data.get("network_username")
+    password = data.get("network_password")
+    domain = data.get("network_domain")
+
+    result = BackupService.test_network_storage(
+        network_path=network_path,
+        username=username,
+        password=password,
+        domain=domain
+    )
+    return result
+
+@router.get("/api/backup/list")
+async def api_list_backups(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Lista todos os backups existentes no sistema"""
+    from app.services.backup_service import BackupService
+    backups = BackupService.list_backups(db)
+    return {"success": True, "backups": backups}
+
+@router.post("/api/backup/create")
+async def api_create_backup_now(
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Executa imediatamente a rotina de criação de backup manual"""
+    from app.services.backup_service import BackupService
+    result = BackupService.create_backup(db, backup_type="manual", user_id=admin_user.id)
+    if not result.get("success"):
+        raise HTTPException(status_code=500, detail=result.get("message", "Falha ao criar backup."))
+    return result
+
+@router.get("/api/backup/download/{backup_id}")
+async def api_download_backup(
+    backup_id: int,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Faz o download seguro do arquivo de backup (.zip)"""
+    from app.models import BackupRecord
+    record = db.query(BackupRecord).filter(BackupRecord.id == backup_id).first()
+    if not record or not record.file_path or not os.path.exists(record.file_path):
+        raise HTTPException(status_code=404, detail="Arquivo de backup não encontrado no servidor.")
+
+    return FileResponse(
+        path=record.file_path,
+        filename=record.filename,
+        media_type="application/zip"
+    )
+
+@router.delete("/api/backup/{backup_id}")
+async def api_delete_backup(
+    backup_id: int,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Exclui o arquivo de backup e seu registro"""
+    from app.services.backup_service import BackupService
+    success = BackupService.delete_backup(db, backup_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Backup não encontrado.")
+    return {"success": True, "message": "Backup excluído com sucesso."}
+
+@router.post("/api/backup/restore/{backup_id}")
+async def api_restore_backup_by_id(
+    backup_id: int,
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Restaura o sistema a partir de um backup registrado"""
+    from app.services.backup_service import BackupService
+    try:
+        res = BackupService.restore_backup(db, backup_id=backup_id)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/api/backup/upload-restore")
+async def api_upload_restore_backup(
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    admin_user: User = Depends(require_admin)
+):
+    """Recebe um arquivo de backup (.zip ou .db) e restaura no sistema"""
+    from app.services.backup_service import BackupService
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Arquivo vazio.")
+    try:
+        res = BackupService.restore_backup(db, uploaded_bytes=content, filename=file.filename)
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # APIs para interação direta do frontend

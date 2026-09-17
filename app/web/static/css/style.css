@@ -892,23 +892,29 @@ body {
   border: 1px solid var(--border-card);
   border-radius: var(--radius-lg);
   width: 100%;
-  max-width: 560px;
+  max-width: 580px;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
 }
 
 .modal-header {
-  padding: 1.25rem 1.5rem;
+  padding: 1.15rem 1.5rem;
   border-bottom: 1px solid var(--border-subtle);
   display: flex;
   justify-content: space-between;
   align-items: center;
+  flex-shrink: 0;
 }
 
 .modal-header h3, .modal-title {
   font-size: 1.15rem;
   font-weight: 700;
   color: #fff;
+  margin: 0;
 }
 
 .modal-close, .btn-close {
@@ -917,19 +923,50 @@ body {
   font-size: 1.25rem;
   color: var(--text-muted);
   cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.modal-close:hover, .btn-close:hover {
+  color: #fff;
 }
 
 .modal-content form, .modal-body {
-  padding: 1.5rem;
+  padding: 1.25rem 1.5rem;
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(99, 102, 241, 0.3) rgba(0, 0, 0, 0.1);
+}
+
+.modal-body::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.modal-body::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.modal-body::-webkit-scrollbar-thumb {
+  background: rgba(99, 102, 241, 0.4);
+  border-radius: 4px;
+}
+
+.modal-body::-webkit-scrollbar-thumb:hover {
+  background: var(--primary);
 }
 
 .modal-footer {
-  padding: 1rem 1.5rem;
+  padding: 0.85rem 1.5rem;
   border-top: 1px solid var(--border-subtle);
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
   background: rgba(0, 0, 0, 0.15);
+  flex-shrink: 0;
 }
 
 .text-income { color: #10b981 !important; }

@@ -70,6 +70,18 @@ def init_db():
                 if "is_telegram_authenticated" not in usr_cols:
                     conn.execute(text("ALTER TABLE users ADD COLUMN is_telegram_authenticated BOOLEAN DEFAULT 0"))
                 conn.commit()
+
+            # 3. BackupConfigs network credentials columns
+            res_cfg = conn.execute(text("PRAGMA table_info(backup_configs)"))
+            cfg_cols = [row[1] for row in res_cfg.fetchall()]
+            if cfg_cols:
+                if "network_username" not in cfg_cols:
+                    conn.execute(text("ALTER TABLE backup_configs ADD COLUMN network_username VARCHAR"))
+                if "network_password" not in cfg_cols:
+                    conn.execute(text("ALTER TABLE backup_configs ADD COLUMN network_password VARCHAR"))
+                if "network_domain" not in cfg_cols:
+                    conn.execute(text("ALTER TABLE backup_configs ADD COLUMN network_domain VARCHAR"))
+                conn.commit()
     except Exception as e:
         logger.debug(f"DB column check info: {e}")
 
