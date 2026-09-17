@@ -59,34 +59,56 @@ async def api_logout():
 
 @router.post("/api/auth/login")
 async def api_login(request: Request, db: Session = Depends(get_db)):
-    """Valida credenciais (usuário ou telefone + senha) e cria sessão segura"""
+    """Valida credenciais (usuário do Telegram, ID ou telefone + senha) e cria sessão segura"""
+    from datetime import datetime
     data = await request.json()
     username = data.get("username", "").strip()
     password = data.get("password", "")
+    remember_me = bool(data.get("remember_me") or data.get("rememberPassword"))
 
     if not username or not password:
-        raise HTTPException(status_code=400, detail="Informe o usuário/telefone e a senha.")
+        raise HTTPException(status_code=400, detail="Informe o usuário do Telegram e a senha.")
 
+    clean_user = username.lstrip("@").lower()
     user = db.query(User).filter(
-        (User.username.ilike(username.lstrip("@"))) | 
+        (User.username.ilike(clean_user)) | 
         (User.phone == username) | 
         (User.telegram_id == username)
     ).first()
 
-    if not user or not AuthService.verify_password(password, user.password_hash):
-        raise HTTPException(status_code=400, detail="Usuário ou senha inválidos.")
+    if not user:
+        raise HTTPException(status_code=400, detail="Usuário não encontrado. Verifique seu login ou utilize o comando /senha no Telegram.")
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Usuário inativo. Entre em contato com o administrador.")
 
-    token = AuthService.generate_session_token(user)
+    # Verifica senha normal ou senha temporária válida
+    pwd_valid = False
+    used_temp_pwd = False
+
+    if user.password_hash and AuthService.verify_password(password, user.password_hash):
+        pwd_valid = True
+    elif user.temp_password and user.temp_password == password:
+        if not user.temp_password_expires_at or user.temp_password_expires_at > datetime.utcnow():
+            pwd_valid = True
+            used_temp_pwd = True
+
+    if not pwd_valid:
+        raise HTTPException(status_code=400, detail="Senha incorreta. Caso tenha esquecido, clique em 'Esqueci a senha' para receber uma senha temporária no Telegram.")
+
+    must_change = bool(user.must_change_password or used_temp_pwd)
+
+    # Duração da sessão: 30 dias se salvar/lembrar, ou 30 minutos (1800s) por padrão
+    cookie_max_age = (30 * 86400) if remember_me else (30 * 60)
+    token = AuthService.generate_session_token(user, expiration_seconds=cookie_max_age)
+
     response = JSONResponse({
         "success": True,
         "user_id": user.id,
-        "username": user.username,
-        "name": user.name,
+        "username": user.username or user.telegram_id,
+        "name": user.name or user.username,
         "system_role": user.system_role or "visualizador",
-        "must_change_password": bool(user.must_change_password),
+        "must_change_password": must_change,
         "redirect_url": "/dashboard"
     })
     
@@ -94,7 +116,7 @@ async def api_login(request: Request, db: Session = Depends(get_db)):
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
-        max_age=7 * 86400,
+        max_age=cookie_max_age,
         samesite="lax",
         path="/"
     )
@@ -102,54 +124,36 @@ async def api_login(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/api/auth/forgot-password")
 async def api_forgot_password(request: Request, db: Session = Depends(get_db)):
-    """Gera senha temporária após validação rigorosa de usuário e telefone celular cadastrado"""
-    import re
-
-    def normalize_phone_digits(p: Optional[str]) -> str:
-        if not p:
-            return ""
-        d = re.sub(r"\D", "", str(p))
-        if len(d) in [12, 13] and d.startswith("55"):
-            d = d[2:]
-        return d
+    """Gera senha temporária e envia diretamente no chat do Telegram do usuário"""
+    from datetime import datetime, timedelta
 
     data = await request.json()
     username = (data.get("username") or data.get("identifier") or "").strip()
     phone = (data.get("phone") or "").strip()
 
-    if not username:
-        raise HTTPException(status_code=400, detail="Informe seu nome de usuário ou login.")
+    if not username and not phone:
+        raise HTTPException(status_code=400, detail="Informe seu usuário do Telegram ou ID para recuperação.")
 
-    if not phone:
-        raise HTTPException(status_code=400, detail="Informe o número de telefone celular cadastrado para validação.")
-
+    clean_user = username.lstrip("@").lower() if username else ""
     user = db.query(User).filter(
-        (User.username.ilike(username.lstrip("@"))) | 
-        (User.telegram_id == username)
+        (User.username.ilike(clean_user) if clean_user else False) | 
+        (User.telegram_id == username if username else False) |
+        (User.phone == (phone or username))
     ).first()
 
     if not user:
-        raise HTTPException(status_code=404, detail="Usuário não encontrado no sistema.")
+        raise HTTPException(
+            status_code=404, 
+            detail="Usuário não encontrado. Caso ainda não tenha iniciado conversa com o bot no Telegram, envie uma mensagem /start para vincular sua conta."
+        )
 
     if not user.is_active:
         raise HTTPException(status_code=403, detail="Usuário inativo. Entre em contato com o administrador.")
 
-    if not user.phone:
-        raise HTTPException(
-            status_code=400, 
-            detail="Este usuário não possui telefone celular cadastrado no sistema. Contate o administrador."
-        )
-
-    input_phone_digits = normalize_phone_digits(phone)
-    user_phone_digits = normalize_phone_digits(user.phone)
-
-    if not input_phone_digits or input_phone_digits != user_phone_digits:
-        raise HTTPException(
-            status_code=400, 
-            detail="O número de telefone informado não confere com o telefone cadastrado para este usuário."
-        )
-
+    # Gera senha temporária de 8 caracteres
     temp_pwd = AuthService.generate_temp_password(8)
+    user.temp_password = temp_pwd
+    user.temp_password_expires_at = datetime.utcnow() + timedelta(minutes=15)
     user.password_hash = AuthService.hash_password(temp_pwd)
     user.must_change_password = True
     db.commit()
@@ -160,7 +164,7 @@ async def api_forgot_password(request: Request, db: Session = Depends(get_db)):
     
     return {
         "success": True,
-        "message": f"Identidade confirmada! Uma senha temporária foi enviada no seu Telegram."
+        "message": f"Senha temporária enviada com sucesso no Telegram para @{user.username or user.telegram_id}! Utilize-a para acessar e definir sua nova senha."
     }
 
 @router.post("/api/auth/change-password")
@@ -215,17 +219,12 @@ async def dashboard_page(
     db: Session = Depends(get_db)
 ):
     """Página principal do Dashboard Financeiro com verificação de login e RBAC"""
-    # 1. Identifica o usuário logado
-    logged_user = None
-    if user_id:
-        logged_user = db.query(User).filter(User.telegram_id == str(user_id)).first()
-    
-    if not logged_user:
-        logged_user = get_current_user_optional(request, db)
+    # 1. Identifica estritamente o usuário logado via sessão
+    logged_user = get_current_user_optional(request, db)
 
     # Se não houver nenhum usuário autenticado, redireciona para a tela de login
     if not logged_user:
-        return RedirectResponse(url="/login")
+        return RedirectResponse(url="/login", status_code=status.HTTP_303_SEE_OTHER)
 
     user = logged_user
     

@@ -86,6 +86,70 @@ async def login_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
+async def senha_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /senha <nova_senha> para definir ou alterar senha do Painel Web e assistente"""
+    user_tg = update.effective_user
+    args = context.args or []
+    
+    # Exclui a mensagem enviada pelo usuário para proteger a privacidade da senha
+    try:
+        if update.message:
+            await update.message.delete()
+    except Exception:
+        pass
+
+    db = SessionLocal()
+    try:
+        from app.services.finance_service import FinanceService
+        from app.services.user_service import UserService
+        from app.config import settings
+
+        user, ws = FinanceService.get_or_create_user(
+            db, 
+            str(user_tg.id), 
+            name=user_tg.full_name or user_tg.first_name, 
+            username=user_tg.username
+        )
+
+        if not args:
+            web_url = f"{settings.BASE_URL}/login"
+            await update.effective_chat.send_message(
+                "🔑 *Configuração de Senha de Acesso Web*\n"
+                "━━━━━━━━━━━━━━━━━━━━\n"
+                f"👤 *Seu Usuário de Acesso:* `@{user.username or user.telegram_id}`\n"
+                f"🌐 *Link do Painel:* {web_url}\n\n"
+                "Para definir ou alterar sua senha para o Painel Web, envie:\n"
+                "`/senha SuaNovaSenha`\n\n"
+                "_(Exemplo: `/senha MinhaSenha123`)_",
+                parse_mode="Markdown"
+            )
+            return
+
+        new_password = " ".join(args).strip()
+        if len(new_password) < 4:
+            await update.effective_chat.send_message(
+                "⚠️ *A senha deve conter no mínimo 4 caracteres.* Envie novamente: `/senha sua_senha`",
+                parse_mode="Markdown"
+            )
+            return
+
+        UserService.change_user_password(db, user.id, new_password)
+        user.is_telegram_authenticated = True
+        db.commit()
+
+        web_url = f"{settings.BASE_URL}/login"
+        msg = (
+            "✅ *Senha Cadastrada com Sucesso!*\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 *Usuário:* `@{user.username or user.telegram_id}`\n"
+            f"🔑 *Senha:* `{new_password}`\n"
+            f"🌐 *Acesse o Painel Web:* {web_url}\n\n"
+            "💡 _Utilize o mesmo usuário e senha para logar na tela web do sistema!_"
+        )
+        await update.effective_chat.send_message(msg, parse_mode="Markdown")
+    finally:
+        db.close()
+
 async def logout_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando /sair ou /logout para bloquear o acesso do Telegram"""
     user_tg = update.effective_user

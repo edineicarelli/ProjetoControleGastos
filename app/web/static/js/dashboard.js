@@ -1,6 +1,99 @@
 let categoryChartInstance = null;
 let cashflowChartInstance = null;
 
+// =========================================================================
+// RASTREADOR DE INATIVIDADE E LOGOUT AUTOMÁTICO (30 MINUTOS)
+// =========================================================================
+(function initInactivityAutoLogout() {
+    const INACTIVITY_LIMIT_MS = 30 * 60 * 1000; // 30 minutos de inatividade
+    const WARNING_LIMIT_MS = 28 * 60 * 1000;    // Aviso prévio aos 28 minutos
+    let lastActivityTimestamp = Date.now();
+    let warningModalOpen = false;
+
+    function registerActivity() {
+        lastActivityTimestamp = Date.now();
+        if (warningModalOpen) {
+            dismissWarningModal();
+        }
+    }
+
+    // Registra interações do usuário no navegador
+    ['mousedown', 'mousemove', 'keypress', 'keydown', 'touchstart', 'scroll', 'click'].forEach(evt => {
+        window.addEventListener(evt, registerActivity, { passive: true });
+    });
+
+    // Intercepta chamadas de API fetch para renovar o timer
+    const originalFetch = window.fetch;
+    window.fetch = function(...args) {
+        lastActivityTimestamp = Date.now();
+        return originalFetch.apply(this, args);
+    };
+
+    function showWarningModal() {
+        if (warningModalOpen) return;
+        warningModalOpen = true;
+
+        let modalEl = document.getElementById('idleWarningModal');
+        if (!modalEl) {
+            modalEl = document.createElement('div');
+            modalEl.id = 'idleWarningModal';
+            modalEl.style.cssText = 'position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0, 0, 0, 0.75); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 999999; display: flex; align-items: center; justify-content: center; padding: 1rem;';
+            modalEl.innerHTML = `
+                <div style="background: #0f172a; border: 1px solid rgba(245, 158, 11, 0.5); border-radius: 18px; padding: 2rem; max-width: 440px; width: 100%; box-shadow: 0 25px 50px rgba(0,0,0,0.8); text-align: center; font-family: 'Outfit', sans-serif;">
+                    <div style="font-size: 2.8rem; margin-bottom: 0.75rem;">⏳</div>
+                    <h3 style="color: #f8fafc; font-size: 1.25rem; font-weight: 700; margin-bottom: 0.5rem;">Sessão Prestes a Expirar</h3>
+                    <p style="color: #94a3b8; font-size: 0.9rem; line-height: 1.5; margin-bottom: 1.75rem;">
+                        Você está inativo há quase 30 minutos. Para sua segurança financeira, sua sessão será encerrada automaticamente em breve.
+                    </p>
+                    <div style="display: flex; gap: 0.75rem; justify-content: center;">
+                        <button onclick="window.location.href='/logout'" style="padding: 0.75rem 1.25rem; border-radius: 10px; border: 1px solid rgba(255,255,255,0.15); background: transparent; color: #cbd5e1; cursor: pointer; font-weight: 600; font-size: 0.9rem;">
+                            Sair Agora
+                        </button>
+                        <button id="btnKeepSessionAlive" style="padding: 0.75rem 1.5rem; border-radius: 10px; border: none; background: linear-gradient(135deg, #6366f1, #4f46e5); color: #fff; cursor: pointer; font-weight: 700; font-size: 0.9rem; box-shadow: 0 4px 16px rgba(99,102,241,0.4);">
+                            Continuar Conectado ✨
+                        </button>
+                    </div>
+                </div>
+            `;
+            document.body.appendChild(modalEl);
+            document.getElementById('btnKeepSessionAlive').addEventListener('click', () => {
+                registerActivity();
+            });
+        } else {
+            modalEl.style.display = 'flex';
+        }
+    }
+
+    function dismissWarningModal() {
+        warningModalOpen = false;
+        const modalEl = document.getElementById('idleWarningModal');
+        if (modalEl) {
+            modalEl.style.display = 'none';
+        }
+    }
+
+    async function triggerAutoLogout() {
+        try {
+            await fetch('/api/auth/logout', { method: 'POST' });
+        } catch (e) {}
+        window.location.href = '/login?reason=idle_timeout';
+    }
+
+    // Intervalo de verificação a cada 10 segundos
+    setInterval(() => {
+        const idleElapsed = Date.now() - lastActivityTimestamp;
+        if (idleElapsed >= INACTIVITY_LIMIT_MS) {
+            triggerAutoLogout();
+        } else if (idleElapsed >= WARNING_LIMIT_MS) {
+            showWarningModal();
+        } else {
+            if (warningModalOpen) {
+                dismissWarningModal();
+            }
+        }
+    }, 10000);
+})();
+
 function showToast(message, type = 'info') {
     let container = document.getElementById('appToastContainer');
     if (!container) {

@@ -54,14 +54,15 @@ class AuthService:
             return False
 
     @staticmethod
-    def generate_session_token(user: User) -> str:
+    def generate_session_token(user: User, expiration_seconds: Optional[int] = None) -> str:
         """Gera um token de sessão assinado e seguro"""
+        exp_time = int(time.time()) + (expiration_seconds if expiration_seconds is not None else (SESSION_EXPIRATION_DAYS * 86400))
         payload = {
             "uid": user.id,
             "usr": user.username or user.telegram_id,
             "role": user.system_role or "visualizador",
-            "mcp": user.must_change_password,
-            "exp": int(time.time()) + (SESSION_EXPIRATION_DAYS * 86400)
+            "mcp": bool(user.must_change_password),
+            "exp": exp_time
         }
         payload_bytes = json.dumps(payload, separators=(',', ':')).encode('utf-8')
         payload_b64 = base64.urlsafe_b64encode(payload_bytes).decode('utf-8').rstrip('=')
@@ -169,13 +170,16 @@ class AuthService:
                 f"O usuário '{user.name or user.username}' não possui um Chat ID do Telegram vinculado. Abra o Telegram e envie uma mensagem /start para o bot para vincular sua conta."
             )
 
+        web_login_url = f"{settings.BASE_URL}/login"
         msg = (
-            f"🔐 *RECUPERAÇÃO DE SENHA*\n"
+            f"🔐 *RECUPERAÇÃO DE ACESSO AO PAINEL*\n"
             f"━━━━━━━━━━━━━━━━━━━━\n"
             f"Olá, *{user.name or user.username}*!\n\n"
-            f"Recebemos uma solicitação de redefinição de senha para o seu acesso ao *Sistema de Controle Financeiro*.\n\n"
+            f"Você solicitou uma senha temporária para acessar o *Sistema de Controle Financeiro*.\n\n"
+            f"👤 *Seu Usuário:* `@{user.username or user.telegram_id}`\n"
             f"🔑 *Sua Senha Temporária:* `{temp_password}`\n\n"
-            f"⚠️ *Importante:* Esta senha expira em 15 minutos e você deverá cadastrar uma nova senha logo após o login."
+            f"🌐 *Acesse agora:* {web_login_url}\n\n"
+            f"⚠️ *Importante:* Esta senha expira em 15 minutos. Ao realizar o login com ela, o sistema solicitará que você cadastre uma nova senha pessoal de sua preferência."
         )
 
         try:
@@ -191,7 +195,7 @@ class AuthService:
 
                 if res.status_code == 200 and res_data.get("ok"):
                     logger.info(f"Senha temporária enviada com sucesso no Telegram para chat_id {chat_id}")
-                    return (True, f"Senha temporária enviada no Telegram para {user.name} com sucesso!")
+                    return (True, f"Senha temporária enviada no Telegram para {user.name or user.username} com sucesso!")
                 else:
                     err_desc = res_data.get("description", "Erro desconhecido do Telegram")
                     logger.error(f"Erro na API do Telegram ao enviar senha temporária: {err_desc}")
@@ -248,6 +252,7 @@ class AuthService:
             ).first()
         else:
             user = db.query(User).filter(User.telegram_id == str(telegram_id)).first()
+
             if not user:
                 # Se ainda não estiver vinculado e não passou username, busca usuário admin padrão ou único
                 admins = db.query(User).filter(
@@ -267,7 +272,7 @@ class AuthService:
         if user.password_hash and AuthService.verify_password(clean_pwd, user.password_hash):
             pwd_match = True
         elif user.temp_password and user.temp_password == clean_pwd:
-            if not user.temp_password_expires_at or user.temp_password_expires_at > datetime.datetime.utcnow():
+            if not user.temp_password_expires_at or user.temp_password_expires_at > datetime.utcnow():
                 pwd_match = True
 
         if not pwd_match:
@@ -275,7 +280,6 @@ class AuthService:
 
         # Atualiza vínculo com telegram_id
         if str(user.telegram_id) != str(telegram_id):
-            # Se havia outro registro placeholder com esse telegram_id, ajusta
             other = db.query(User).filter(User.telegram_id == str(telegram_id)).first()
             if other and other.id != user.id:
                 other.telegram_id = f"detached_{other.id}_{secrets.token_hex(4)}"
@@ -290,7 +294,6 @@ class AuthService:
         db.commit()
         db.refresh(user)
 
-        # Inicializa workspaces se necessário
         from app.services.finance_service import FinanceService
         FinanceService.get_or_create_user(db, str(telegram_id), name=user.name, username=user.username)
 
@@ -308,8 +311,13 @@ class AuthService:
 
 
 def get_current_user_optional(request: Request, db: Session = Depends(get_db)) -> Optional[User]:
-    """Obtém o usuário logado atual através do cookie de sessão, parâmetro de consulta ou fallback seguro"""
+    """Obtém o usuário logado atual estritamente através de cookie assinado ou header de autorização"""
     token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+            
     if token:
         payload = AuthService.decode_session_token(token)
         if payload:
@@ -318,16 +326,6 @@ def get_current_user_optional(request: Request, db: Session = Depends(get_db)) -
                 user = db.query(User).filter(User.id == user_id, User.is_active == True).first()
                 if user:
                     return user
-    
-    # Suporte para parâmetro user_id (Telegram Mini App ou navegação direta)
-    user_id_param = request.query_params.get("user_id")
-    if user_id_param:
-        user = db.query(User).filter(
-            ((User.telegram_id == str(user_id_param)) | (User.id == int(user_id_param) if str(user_id_param).isdigit() else False)),
-            User.is_active == True
-        ).first()
-        if user:
-            return user
 
     return None
 

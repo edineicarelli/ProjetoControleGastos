@@ -296,7 +296,7 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             from app.config import settings
             from telegram import InlineKeyboardButton, InlineKeyboardMarkup
             tg_id = data.replace("show_web_link_", "")
-            web_url = f"{settings.BASE_URL}/dashboard?user_id={tg_id}"
+            web_url = f"{settings.BASE_URL}/login"
             
             # Telegram API rejeita InlineKeyboardButton com 'localhost' ou '127.0.0.1'
             is_valid_public_url = (
@@ -306,14 +306,17 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
             markup = None
             if is_valid_public_url:
                 markup = InlineKeyboardMarkup([[
-                    InlineKeyboardButton(text="🚀 Abrir Painel Financeiro", url=web_url)
+                    InlineKeyboardButton(text="🚀 Acessar Painel Web", url=web_url)
                 ]])
 
+            user_login_name = user.username or tg_id
             await query.message.reply_text(
-                f"🌐 <b>Painel Financeiro Web & Relatórios</b>\n\n"
-                f"Clique no link abaixo para acessar seu painel:\n"
-                f"👉 <b>{web_url}</b>\n\n"
-                f"📊 <i>Abra no navegador do seu computador ou celular para visualizar gráficos interativos, fluxo mensal e relatórios completos!</i>",
+                f"🌐 <b>Painel Financeiro Web & Relatórios</b>\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"🔗 <b>Link de Acesso:</b> {web_url}\n\n"
+                f"👤 <b>Seu Usuário:</b> <code>@{user_login_name}</code>\n"
+                f"🔑 <b>Senha:</b> Digite <code>/senha SuaSenha</code> no Telegram para definir ou alterar sua senha a qualquer momento.\n\n"
+                f"📊 <i>No painel você acompanha gráficos analíticos, fluxo mensal, conciliação bancária e exporta relatórios em Excel/PDF!</i>",
                 parse_mode="HTML",
                 reply_markup=markup
             )
