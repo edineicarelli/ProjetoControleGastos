@@ -4,17 +4,23 @@ import logging
 from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes
 from app.database import SessionLocal
+from app.models import User, Workspace, Account, Transaction, Reminder, Category, Goal
 from app.config import settings
 from app.services.finance_service import FinanceService
 from app.services.auth_service import AuthService
 from app.services.ai_service import ai_service
 from app.services.reminder_service import ReminderService
+from app.services.account_service import AccountService
 from app.services.goal_service import GoalService
 from app.services.vehicle_service import VehicleService
 from app.services.shopping_service import ShoppingService
-from app.bot.keyboards import get_dashboard_link_keyboard, get_profile_inline_keyboard, get_main_reply_keyboard
+from app.bot.keyboards import (
+    get_dashboard_link_keyboard, get_profile_inline_keyboard, get_main_reply_keyboard,
+    get_cupom_detail_keyboard, get_cupons_list_keyboard,
+    get_extrato_keyboard, get_account_filter_keyboard, get_expenses_by_account_keyboard
+)
 from app.bot.handlers.auth_helper import get_authenticated_bot_user
-from app.utils import format_currency_br, format_number_br, format_items_list_text
+from app.utils import format_currency_br, format_number_br, format_items_list_text, format_full_receipt_text
 
 logger = logging.getLogger(__name__)
 
@@ -135,6 +141,283 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             from app.bot.handlers.commands import painel_handler
             return await painel_handler(update, context)
 
+        # Checa se o usuário estava aguardando digitar dados de edição (Lembretes ou Lançamentos)
+        import re
+
+        def _parse_amount_from_text(raw_val: str):
+            raw_clean = raw_val.strip().replace("R$", "").replace("$", "").strip()
+            if "," in raw_clean and "." in raw_clean:
+                raw_clean = raw_clean.replace(".", "").replace(",", ".")
+            elif "," in raw_clean:
+                raw_clean = raw_clean.replace(",", ".")
+            match = re.search(r"[-+]?\d*\.?\d+", raw_clean)
+            if match:
+                try:
+                    val = float(match.group(0))
+                    return val if val > 0 else None
+                except Exception:
+                    pass
+            return None
+
+        def _parse_date_from_text(raw_val: str):
+            now = datetime.datetime.now()
+            t_low = raw_val.strip().lower()
+            if t_low in ["hoje", "hj"]:
+                return now
+            if t_low in ["ontem"]:
+                return now - datetime.timedelta(days=1)
+            if t_low in ["anteontem"]:
+                return now - datetime.timedelta(days=2)
+            
+            date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{4}|\d{1,2}/\d{1,2})", raw_val.strip())
+            if date_match:
+                raw_d = date_match.group(1)
+                parts = raw_d.split("/")
+                if len(parts) == 3:
+                    ano = int(parts[2]) if len(parts[2]) == 4 else 2000 + int(parts[2])
+                    return datetime.datetime(ano, int(parts[1]), int(parts[0]))
+                elif len(parts) == 2:
+                    d_day = int(parts[0])
+                    d_month = int(parts[1])
+                    d_year = now.year if (d_month > now.month or (d_month == now.month and d_day >= now.day)) else now.year + 1
+                    return datetime.datetime(d_year, d_month, d_day)
+            
+            dia_match = re.search(r"(?:dia\s*)?(\d{1,2})", raw_val.strip())
+            if dia_match:
+                d_day = int(dia_match.group(1))
+                if 1 <= d_day <= 31:
+                    d_month = now.month if d_day >= now.day else (now.month % 12) + 1
+                    d_year = now.year if d_day >= now.day or d_month > 1 else now.year + 1
+                    return datetime.datetime(d_year, d_month, d_day)
+            return None
+
+        # 1. Nova data de vencimento de lembrete
+        waiting_rem_id = context.user_data.get("waiting_due_date_rem_id")
+        if waiting_rem_id:
+            rem = db.query(Reminder).filter(Reminder.id == waiting_rem_id).first()
+            if rem:
+                parsed_dt = _parse_date_from_text(text)
+                if parsed_dt:
+                    del context.user_data["waiting_due_date_rem_id"]
+                    ReminderService.update_reminder(db, rem.id, due_date=parsed_dt)
+                    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                    markup = InlineKeyboardMarkup([[
+                        InlineKeyboardButton("⏰ Ver Agenda de Contas", callback_data="refresh_reminders"),
+                        InlineKeyboardButton("🌐 Abrir Painel Web", callback_data=f"show_web_link_{user_tg.id}")
+                    ]])
+                    await update.message.reply_text(
+                        f"✅ *Vencimento Atualizado com Sucesso!*\n\n"
+                        f"📝 Conta: *{rem.title}*\n"
+                        f"💰 Valor: *{format_currency_br(rem.amount)}*\n"
+                        f"📅 *Novo Vencimento:* *{parsed_dt.strftime('%d/%m/%Y')}*\n\n"
+                        f"🔔 Seus alertas foram reprogramados para a nova data!",
+                        parse_mode="Markdown",
+                        reply_markup=markup
+                    )
+                    return
+                else:
+                    await update.message.reply_text(
+                        f"⚠️ Formato de data não compreendido.\nPor favor, envie no formato `DD/MM` ou `DD/MM/AAAA` (ex: `25/10`), ou clique em cancelar.",
+                        parse_mode="Markdown"
+                    )
+                    return
+            else:
+                del context.user_data["waiting_due_date_rem_id"]
+
+        # 2. Novo valor de lembrete
+        waiting_rem_amount_id = context.user_data.get("waiting_rem_amount_id")
+        if waiting_rem_amount_id:
+            rem = db.query(Reminder).filter(Reminder.id == waiting_rem_amount_id).first()
+            if rem:
+                parsed_val = _parse_amount_from_text(text)
+                if parsed_val:
+                    del context.user_data["waiting_rem_amount_id"]
+                    old_amount = rem.amount
+                    ReminderService.update_reminder(db, rem.id, amount=parsed_val)
+                    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                    markup = InlineKeyboardMarkup([[
+                        InlineKeyboardButton("⏰ Ver Agenda de Contas", callback_data="refresh_reminders"),
+                        InlineKeyboardButton("🌐 Abrir Painel Web", callback_data=f"show_web_link_{user_tg.id}")
+                    ]])
+                    await update.message.reply_text(
+                        f"✅ *Valor da Conta Atualizado com Sucesso!*\n\n"
+                        f"📝 Conta: *{rem.title}*\n"
+                        f"💵 Valor Anterior: ~{format_currency_br(old_amount)}~\n"
+                        f"💰 *Novo Valor:* *{format_currency_br(parsed_val)}*\n"
+                        f"📅 Vencimento: *{rem.due_date.strftime('%d/%m/%Y')}*",
+                        parse_mode="Markdown",
+                        reply_markup=markup
+                    )
+                    return
+                else:
+                    await update.message.reply_text(
+                        f"⚠️ Formato de valor não compreendido.\nPor favor, envie um valor válido (ex: `150,00` ou `280`).",
+                        parse_mode="Markdown"
+                    )
+                    return
+            else:
+                del context.user_data["waiting_rem_amount_id"]
+
+        # 3. Novo valor de transação efetivada
+        waiting_tx_amount_id = context.user_data.get("waiting_tx_amount_id")
+        if waiting_tx_amount_id:
+            tx = db.query(Transaction).filter(Transaction.id == waiting_tx_amount_id).first()
+            if tx:
+                parsed_val = _parse_amount_from_text(text)
+                if parsed_val:
+                    del context.user_data["waiting_tx_amount_id"]
+                    old_amount = tx.amount
+                    updated_tx = FinanceService.update_transaction(db, tx.id, amount=parsed_val)
+                    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                    markup = InlineKeyboardMarkup([[
+                        InlineKeyboardButton("📑 Voltar ao Extrato", callback_data="back_to_extrato"),
+                        InlineKeyboardButton("✏️ Outras Alterações", callback_data=f"menu_edit_tx_{updated_tx.id}")
+                    ]])
+                    acc_info = f"\n💳 Saldo atual da conta ({updated_tx.account.name}): *{format_currency_br(updated_tx.account.current_balance)}*" if updated_tx.account else ""
+                    await update.message.reply_text(
+                        f"✅ *Valor do Lançamento Atualizado!*\n\n"
+                        f"📝 *{updated_tx.description}*\n"
+                        f"💵 Valor Anterior: ~{format_currency_br(old_amount)}~\n"
+                        f"💰 *Novo Valor:* *{format_currency_br(updated_tx.amount)}*"
+                        f"{acc_info}\n\n"
+                        f"📊 O saldo da conta e os totais mensais foram recalculados automaticamente.",
+                        parse_mode="Markdown",
+                        reply_markup=markup
+                    )
+                    return
+                else:
+                    await update.message.reply_text(
+                        f"⚠️ Valor inválido.\nPor favor, envie um número válido (ex: `45,50` ou `120`).",
+                        parse_mode="Markdown"
+                    )
+                    return
+            else:
+                del context.user_data["waiting_tx_amount_id"]
+
+        # 4. Nova data de transação efetivada
+        waiting_tx_date_id = context.user_data.get("waiting_tx_date_id")
+        if waiting_tx_date_id:
+            tx = db.query(Transaction).filter(Transaction.id == waiting_tx_date_id).first()
+            if tx:
+                parsed_dt = _parse_date_from_text(text)
+                if parsed_dt:
+                    del context.user_data["waiting_tx_date_id"]
+                    old_date = tx.transaction_date.strftime("%d/%m/%Y")
+                    updated_tx = FinanceService.update_transaction(db, tx.id, transaction_date=parsed_dt)
+                    from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                    markup = InlineKeyboardMarkup([[
+                        InlineKeyboardButton("📑 Voltar ao Extrato", callback_data="back_to_extrato"),
+                        InlineKeyboardButton("✏️ Outras Alterações", callback_data=f"menu_edit_tx_{updated_tx.id}")
+                    ]])
+                    await update.message.reply_text(
+                        f"✅ *Data do Lançamento Atualizada!*\n\n"
+                        f"📝 *{updated_tx.description}*\n"
+                        f"🗓️ Data Anterior: ~{old_date}~\n"
+                        f"📅 *Nova Data:* *{updated_tx.transaction_date.strftime('%d/%m/%Y')}*",
+                        parse_mode="Markdown",
+                        reply_markup=markup
+                    )
+                    return
+                else:
+                    await update.message.reply_text(
+                        f"⚠️ Formato de data não compreendido.\nPor favor, envie no formato `DD/MM` ou `DD/MM/AAAA` (ex: `15/09`).",
+                        parse_mode="Markdown"
+                    )
+                    return
+            else:
+                del context.user_data["waiting_tx_date_id"]
+
+        # 5. Nova categoria de transação efetivada
+        waiting_tx_cat_id = context.user_data.get("waiting_tx_cat_id")
+        if waiting_tx_cat_id:
+            tx = db.query(Transaction).filter(Transaction.id == waiting_tx_cat_id).first()
+            if tx:
+                del context.user_data["waiting_tx_cat_id"]
+                new_cat = text.strip()
+                old_cat = tx.category.name if tx.category else "Outros"
+                updated_tx = FinanceService.update_transaction(db, tx.id, category_name=new_cat)
+                from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                markup = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📑 Voltar ao Extrato", callback_data="back_to_extrato"),
+                    InlineKeyboardButton("✏️ Outras Alterações", callback_data=f"menu_edit_tx_{updated_tx.id}")
+                ]])
+                await update.message.reply_text(
+                    f"✅ *Categoria Atualizada!*\n\n"
+                    f"📝 *{updated_tx.description}*\n"
+                    f"🏷️ Categoria Anterior: ~{old_cat}~\n"
+                    f"🏷️ *Nova Categoria:* *{updated_tx.category.name if updated_tx.category else new_cat}*",
+                    parse_mode="Markdown",
+                    reply_markup=markup
+                )
+                return
+            else:
+                del context.user_data["waiting_tx_cat_id"]
+
+        # 6. Nova descrição de transação efetivada
+        waiting_tx_desc_id = context.user_data.get("waiting_tx_desc_id")
+        if waiting_tx_desc_id:
+            tx = db.query(Transaction).filter(Transaction.id == waiting_tx_desc_id).first()
+            if tx:
+                del context.user_data["waiting_tx_desc_id"]
+                old_desc = tx.description
+                new_desc = text.strip()
+                updated_tx = FinanceService.update_transaction(db, tx.id, description=new_desc)
+                from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+                markup = InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📑 Voltar ao Extrato", callback_data="back_to_extrato"),
+                    InlineKeyboardButton("✏️ Outras Alterações", callback_data=f"menu_edit_tx_{updated_tx.id}")
+                ]])
+                await update.message.reply_text(
+                    f"✅ *Descrição Atualizada!*\n\n"
+                    f"📝 Anterior: ~{old_desc}~\n"
+                    f"📝 *Nova Descrição:* *{updated_tx.description}*",
+                    parse_mode="Markdown",
+                    reply_markup=markup
+                )
+                return
+            else:
+                del context.user_data["waiting_tx_desc_id"]
+
+        # 6. Ajuste de Saldo de Conta
+        awaiting_set_acc_bal = context.user_data.get("awaiting_set_acc_bal")
+        if awaiting_set_acc_bal:
+            from app.models import Account
+            from app.services.account_service import AccountService
+            from app.bot.keyboards import get_account_detail_keyboard
+            acc = db.query(Account).filter(Account.id == awaiting_set_acc_bal).first()
+            if acc:
+                parsed_val = _parse_amount_from_text(text)
+                if parsed_val is not None:
+                    del context.user_data["awaiting_set_acc_bal"]
+                    is_initial = "inicial" in text.lower()
+                    if is_initial:
+                        AccountService.update_account(db, acc.id, initial_balance=parsed_val)
+                    else:
+                        AccountService.set_account_balance(db, acc.id, parsed_val)
+                    
+                    db.refresh(acc)
+                    msg = (
+                        f"✅ *Saldo da Conta Atualizado com Sucesso!*\n\n"
+                        f"🏦 *Conta:* {acc.icon} {acc.name}\n"
+                        f"💰 *Saldo Atual:* {format_currency_br(acc.current_balance)}\n"
+                        f"🏷️ *Saldo Inicial:* {format_currency_br(acc.initial_balance)}\n\n"
+                        f"📊 Todos os saldos consolidados e extratos foram recalculados com precisão."
+                    )
+                    await update.message.reply_text(
+                        msg,
+                        parse_mode="Markdown",
+                        reply_markup=get_account_detail_keyboard(acc)
+                    )
+                    return
+                else:
+                    await update.message.reply_text(
+                        "⚠️ Valor não reconhecido.\nPor favor, envie um valor válido (ex: `1500,00` ou `saldo 2500`).",
+                        parse_mode="Markdown"
+                    )
+                    return
+            else:
+                del context.user_data["awaiting_set_acc_bal"]
+
         # Feedback imediato de digitação
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="typing")
 
@@ -186,61 +469,194 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             )
             return
 
-        if any(w in text_lower for w in ["ver itens", "itens do cupom", "itens do mercado", "itens da compra", "produtos do cupom", "cupom fiscal", "mostrar itens", "quais itens", "detalhes do cupom", "ver cupom", "lista do cupom", "listar itens", "meus cupons"]):
+        # Comando de Despesas do Mês e por Conta
+        if any(w in text_lower for w in [
+            "despesas do mes", "despesas do mês", "gastos do mes", "gastos do mês",
+            "despesas por conta", "gastos por conta", "gastos por banco", "despesas por banco",
+            "listar despesas", "minhas despesas", "meus gastos", "ver despesas", "ver gastos",
+            "quanto gastei", "despesas no", "despesas na", "gastos no", "gastos na"
+        ]):
+            accounts = AccountService.get_accounts(db, ws.id)
+            target_acc = None
+            for acc in accounts:
+                if acc.name.lower() in text_lower:
+                    target_acc = acc
+                    break
+
+            if target_acc:
+                stats = FinanceService.get_account_monthly_stats(db, ws.id, target_acc.id)
+                txs = FinanceService.get_filtered_transactions(db, ws.id, tx_type="expense", account_id=target_acc.id, limit=8)
+
+                msg = (
+                    f"🔴 *Despesas do Mês - {target_acc.icon} {target_acc.name}*\n"
+                    f"📍 *Contexto:* `{ws.name}`\n"
+                    f"───────────────────\n"
+                    f"💸 *Total Gasto no Mês:* {format_currency_br(stats.get('total_expense', 0))}\n"
+                    f"💰 *Saldo Atual da Conta:* {format_currency_br(target_acc.current_balance)}\n"
+                    f"📊 *Total de Despesas:* {len(txs)} lançamentos\n"
+                    f"───────────────────\n\n"
+                )
+                if not txs:
+                    msg += "📭 _Nenhuma despesa registrada nesta conta no mês atual._"
+                else:
+                    msg += "*Últimos Gastos Registrados:*\n"
+                    for t in txs:
+                        cat = t.category.name if t.category else "Outros"
+                        dt = t.transaction_date.strftime("%d/%m")
+                        items_badge = f" • 🛒 {t.items_count} itens" if t.items_count > 0 else ""
+                        msg += f"🔴 *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 📅 _{dt}_\n\n"
+
+                await update.message.reply_text(
+                    msg,
+                    parse_mode="Markdown",
+                    reply_markup=get_extrato_keyboard(txs=txs, current_type="expense", current_acc_id=target_acc.id)
+                )
+                return
+            else:
+                summary = FinanceService.get_expenses_by_account_summary(db, ws.id)
+                txs = FinanceService.get_filtered_transactions(db, ws.id, tx_type="expense", limit=6)
+
+                msg = (
+                    f"🔴 *Despesas do Mês & Por Conta*\n"
+                    f"📍 *Contexto:* `{ws.name}`\n"
+                    f"───────────────────\n"
+                    f"💸 *Total Geral de Despesas:* {format_currency_br(summary['total_expense'])}\n"
+                    f"───────────────────\n"
+                    f"🏦 *Detalhamento por Conta Bancária:*\n"
+                )
+
+                for acc_info in summary["accounts"]:
+                    if acc_info["expense_total"] > 0 or acc_info.get("account_id") is not None:
+                        icon = acc_info.get("icon", "💳")
+                        name = acc_info["name"]
+                        spent = format_currency_br(acc_info["expense_total"])
+                        pct = acc_info["expense_percentage"]
+                        bal = format_currency_br(acc_info["current_balance"])
+                        msg += f"{icon} *{name}:* {spent} ({pct:.0f}%) • _Saldo: {bal}_\n"
+
+                msg += f"───────────────────\n"
+                if txs:
+                    msg += f"\n👇 *Últimos Gastos Registrados:*\n"
+                    for t in txs:
+                        cat = t.category.name if t.category else "Outros"
+                        dt = t.transaction_date.strftime("%d/%m")
+                        acc_label = t.account.name if t.account else t.payment_method
+                        items_badge = f" • 🛒 {t.items_count} itens" if t.items_count > 0 else ""
+                        msg += f"🔴 *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 💳 _{acc_label}_ • 📅 _{dt}_\n\n"
+
+                await update.message.reply_text(
+                    msg,
+                    parse_mode="Markdown",
+                    reply_markup=get_expenses_by_account_keyboard(summary["accounts"])
+                )
+                return
+
+        # Comando de Receitas do Mês e por Conta
+        if any(w in text_lower for w in [
+            "receitas do mes", "receitas do mês", "entradas do mes", "entradas do mês",
+            "listar receitas", "minhas receitas", "ver receitas", "ver entradas",
+            "receitas no", "receitas na", "entradas no", "entradas na"
+        ]):
+            accounts = AccountService.get_accounts(db, ws.id)
+            target_acc = None
+            for acc in accounts:
+                if acc.name.lower() in text_lower:
+                    target_acc = acc
+                    break
+
+            if target_acc:
+                stats = FinanceService.get_account_monthly_stats(db, ws.id, target_acc.id)
+                txs = FinanceService.get_filtered_transactions(db, ws.id, tx_type="income", account_id=target_acc.id, limit=8)
+
+                msg = (
+                    f"🟢 *Receitas do Mês - {target_acc.icon} {target_acc.name}*\n"
+                    f"📍 *Contexto:* `{ws.name}`\n"
+                    f"───────────────────\n"
+                    f"💰 *Total Recebido no Mês:* {format_currency_br(stats.get('total_income', 0))}\n"
+                    f"🏦 *Saldo Atual da Conta:* {format_currency_br(target_acc.current_balance)}\n"
+                    f"📊 *Total de Entradas:* {len(txs)} lançamentos\n"
+                    f"───────────────────\n\n"
+                )
+                if not txs:
+                    msg += "📭 _Nenhuma receita registrada nesta conta no mês atual._"
+                else:
+                    msg += "*Últimas Receitas Registradas:*\n"
+                    for t in txs:
+                        cat = t.category.name if t.category else "Receita"
+                        dt = t.transaction_date.strftime("%d/%m")
+                        msg += f"🟢 *{format_currency_br(t.amount)}* | {t.description}\n   🏷️ _{cat}_ • 📅 _{dt}_\n\n"
+
+                await update.message.reply_text(
+                    msg,
+                    parse_mode="Markdown",
+                    reply_markup=get_extrato_keyboard(txs=txs, current_type="income", current_acc_id=target_acc.id)
+                )
+                return
+            else:
+                summary = FinanceService.get_monthly_summary(db, ws.id)
+                txs = FinanceService.get_filtered_transactions(db, ws.id, tx_type="income", limit=8)
+
+                msg = (
+                    f"🟢 *Receitas do Mês*\n"
+                    f"📍 *Contexto:* `{ws.name}`\n"
+                    f"───────────────────\n"
+                    f"💰 *Total de Receitas:* {format_currency_br(summary['total_income'])}\n"
+                    f"───────────────────\n\n"
+                )
+                if not txs:
+                    msg += "📭 _Nenhuma receita registrada neste perfil no mês atual._"
+                else:
+                    msg += "*Últimas Receitas Registradas:*\n"
+                    for t in txs:
+                        cat = t.category.name if t.category else "Receita"
+                        dt = t.transaction_date.strftime("%d/%m")
+                        acc_label = t.account.name if t.account else t.payment_method
+                        msg += f"🟢 *{format_currency_br(t.amount)}* | {t.description}\n   🏷️ _{cat}_ • 💳 _{acc_label}_ • 📅 _{dt}_\n\n"
+
+                await update.message.reply_text(
+                    msg,
+                    parse_mode="Markdown",
+                    reply_markup=get_extrato_keyboard(txs=txs, current_type="income", current_acc_id=None)
+                )
+                return
+
+        if any(w in text_lower for w in ["ver itens", "itens do cupom", "itens do mercado", "itens da compra", "produtos do cupom", "cupom fiscal", "mostrar itens", "quais itens", "detalhes do cupom", "ver cupom", "lista do cupom", "listar itens", "meus cupons", "ver cupons", "ver nota fiscal", "nota fiscal", "mostrar cupom", "compras com itens", "produtos da compra", "produtos comprados"]):
             from app.models import Transaction
             tx_with_items = db.query(Transaction).filter(
                 Transaction.workspace_id == ws.id
             ).order_by(Transaction.transaction_date.desc(), Transaction.id.desc()).all()
-            
+
             recent_with_items = [t for t in tx_with_items if t.items and len(t.items) > 0]
-            
+
             if not recent_with_items:
                 await update.message.reply_text(
                     "🛒 *Nenhum cupom fiscal ou compra com itens detalhados foi encontrado neste perfil.*\n\n"
-                    "💡 Ao enviar a foto de um cupom de mercado ou cadastrar uma compra com itens, você poderá consultá-los aqui a qualquer momento!",
+                    "💡 Ao enviar a foto de um cupom de mercado ou cadastrar uma compra com itens (ex: `Gastei 120 no Condor: leite 10, carne 80, cafe 30`), você poderá consultá-los aqui a qualquer momento!",
                     parse_mode="Markdown"
                 )
                 return
 
-            target_tx = recent_with_items[0]
-            items = target_tx.items
-            lines = [
-                f"🧾 *Cupom Fiscal - {target_tx.description}*",
-                f"💰 *Valor Total Pago:* {format_currency_br(target_tx.amount)}",
-                f"📅 *Data:* {target_tx.transaction_date.strftime('%d/%m/%Y')} • 🏷️ *Categoria:* {target_tx.category.name if target_tx.category else 'Mercado'}",
-                "───────────────────"
-            ]
-            for idx, it in enumerate(items, 1):
-                tot = it.total_price if it.total_price > 0 else (it.quantity * it.unit_price)
-                if it.unit_price > 0 and (it.quantity != 1 or it.unit != "un"):
-                    unit_str = f" ({it.quantity:g} {it.unit} x {format_currency_br(it.unit_price)})"
-                elif it.quantity != 1 or it.unit != "un":
-                    unit_str = f" ({it.quantity:g} {it.unit})"
-                else:
-                    unit_str = ""
-                tot_str = f" → *{format_currency_br(tot)}*" if tot > 0 else ""
-                cat_str = f" _{it.category}_" if it.category and it.category != "Geral" else ""
-                lines.append(f"*{idx}.* {it.name}{unit_str}{tot_str}{cat_str}")
+            target_tx = None
+            # Verifica se o usuário mencionou o nome do mercado ou item na mensagem
+            for t in recent_with_items:
+                if t.description and t.description.lower() in text_lower:
+                    target_tx = t
+                    break
+                if any(it.name and it.name.lower() in text_lower for it in t.items):
+                    target_tx = t
+                    break
 
-            lines.append("───────────────────")
-            lines.append(f"📊 *Total de Produtos:* {len(items)} itens discriminados")
-            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
-            
-            buttons = []
-            if len(recent_with_items) > 1:
-                other_btns = []
-                for other in recent_with_items[1:4]:
-                    short_title = other.description[:14] if other.description else "Cupom"
-                    other_btns.append(InlineKeyboardButton(f"🧾 {short_title}", callback_data=f"txitems_{other.id}"))
-                if other_btns:
-                    buttons.append(other_btns)
+            if not target_tx:
+                target_tx = recent_with_items[0]
 
-            buttons.append([
-                InlineKeyboardButton("💰 Manter Só Total (Remover Itens)", callback_data=f"txdelitems_{target_tx.id}"),
-                InlineKeyboardButton("🔙 Voltar ao Extrato", callback_data="back_to_extrato")
-            ])
-            item_markup = InlineKeyboardMarkup(buttons)
-            await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=item_markup)
+            items = FinanceService.get_transaction_items(db, target_tx.id)
+            idx = recent_with_items.index(target_tx) if target_tx in recent_with_items else 0
+            prev_id = recent_with_items[idx + 1].id if idx + 1 < len(recent_with_items) else None
+            next_id = recent_with_items[idx - 1].id if idx > 0 else None
+
+            receipt_text = format_full_receipt_text(target_tx, items)
+            reply_markup = get_cupom_detail_keyboard(target_tx.id, prev_id=prev_id, next_id=next_id)
+            await update.message.reply_text(receipt_text, parse_mode="Markdown", reply_markup=reply_markup)
             return
 
         # Comando: Ranking de Mercado & Itens mais consumidos
@@ -396,6 +812,57 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             else:
                 await update.message.reply_text(f"⚠️ Conta *{target_name}* não encontrada neste perfil.", parse_mode="Markdown")
                 return
+
+        elif any(w in text_lower for w in ["ajustar saldo", "definir saldo", "alterar saldo", "mudar saldo", "saldo inicial", "saldo da conta", "saldo no ", "saldo na "]):
+            import re
+            from app.services.account_service import AccountService
+            from app.bot.keyboards import get_account_detail_keyboard
+
+            # Tenta extrair valor numérico
+            val_match = re.search(r"(?:para|de|em|r\$)?\s*(\d+(?:[.,]\d{1,2})?)\s*$", text_lower)
+            if not val_match:
+                val_match = re.search(r"(\d+(?:[.,]\d{1,2})?)", text_lower)
+
+            if val_match:
+                val_str = val_match.group(1).replace(",", ".")
+                target_val = float(val_str)
+                
+                # Identifica a conta
+                accounts = AccountService.get_accounts(db, ws.id)
+                matched_acc = None
+                for a in accounts:
+                    if a.name.lower() in text_lower:
+                        matched_acc = a
+                        break
+
+                if not matched_acc:
+                    for a in accounts:
+                        alias = a.name.lower().split()[0]
+                        if len(alias) >= 3 and alias in text_lower:
+                            matched_acc = a
+                            break
+
+                if matched_acc:
+                    is_initial = "saldo inicial" in text_lower
+                    if is_initial:
+                        AccountService.update_account(db, matched_acc.id, initial_balance=target_val)
+                    else:
+                        AccountService.set_account_balance(db, matched_acc.id, target_val)
+
+                    db.refresh(matched_acc)
+                    msg = (
+                        f"✅ *Saldo da Conta Atualizado!*\n\n"
+                        f"🏦 *Conta:* {matched_acc.icon} {matched_acc.name}\n"
+                        f"💰 *Saldo Atual:* {format_currency_br(matched_acc.current_balance)}\n"
+                        f"🏷️ *Saldo Inicial:* {format_currency_br(matched_acc.initial_balance)}\n\n"
+                        f"📊 O extrato e saldo consolidado foram sincronizados."
+                    )
+                    await update.message.reply_text(
+                        msg,
+                        parse_mode="Markdown",
+                        reply_markup=get_account_detail_keyboard(matched_acc)
+                    )
+                    return
 
         # Chama a IA para processar
         parsed = await ai_service.parse_text(text, user_context)
@@ -840,7 +1307,152 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
         )
         return rem_msg, None
 
-    # 3. Metas / Caixinhas
+    # 4. Alteração de Data de Vencimento de Conta / Lembrete / Valor
+    elif intent == "reminder_update" and parsed.reminder_update:
+        up = parsed.reminder_update
+        due_dt = None
+        if up.new_due_date:
+            try:
+                due_dt = datetime.datetime.strptime(up.new_due_date, "%Y-%m-%d")
+            except Exception:
+                due_dt = datetime.datetime.utcnow() + datetime.timedelta(days=5)
+
+        from app.models import Reminder
+        search_term = (up.title or "").strip().lower()
+        reminders = db.query(Reminder).filter(
+            Reminder.workspace_id == ws.id,
+            Reminder.status == "pending"
+        ).all()
+
+        target_rem = None
+        if search_term:
+            for r in reminders:
+                r_title_lower = r.title.lower()
+                if search_term in r_title_lower or r_title_lower in search_term:
+                    target_rem = r
+                    break
+
+        # Fallback: se há apenas 1 lembrete pendente
+        if not target_rem and len(reminders) == 1:
+            target_rem = reminders[0]
+
+        if target_rem:
+            old_date = target_rem.due_date.strftime("%d/%m/%Y")
+            old_amount = target_rem.amount
+            new_amount_val = up.new_amount if (up.new_amount and up.new_amount > 0) else None
+            
+            ReminderService.update_reminder(db, target_rem.id, due_date=due_dt, amount=new_amount_val)
+            from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+            markup = InlineKeyboardMarkup([[
+                InlineKeyboardButton("⏰ Ver Agenda de Contas", callback_data="refresh_reminders"),
+                InlineKeyboardButton("🌐 Abrir Painel Web", callback_data=f"show_web_link_{user_tg.id}")
+            ]])
+            
+            detalhes = []
+            if due_dt:
+                detalhes.append(f"🗓️ Vencimento: ~{old_date}~ ➔ *{due_dt.strftime('%d/%m/%Y')}*")
+            if new_amount_val is not None:
+                detalhes.append(f"💵 Valor: ~{format_currency_br(old_amount)}~ ➔ *{format_currency_br(new_amount_val)}*")
+            
+            detalhes_str = "\n".join(detalhes) if detalhes else f"📅 *Novo Vencimento:* *{target_rem.due_date.strftime('%d/%m/%Y')}*"
+            
+            update_msg = (
+                f"✅ *Conta / Lembrete Atualizado com Sucesso!*\n\n"
+                f"📝 Conta: *{target_rem.title}*\n"
+                f"{detalhes_str}\n\n"
+                f"🔔 Os alertas automáticos no Telegram foram atualizados!"
+            )
+            return update_msg, markup
+        else:
+            from app.bot.keyboards import get_reminders_list_keyboard
+            if reminders:
+                return (
+                    f"⚠️ Não encontrei uma conta pendente com o nome *\"{up.title}\"* no perfil `{ws.name}`.\n\n"
+                    f"👇 _Selecione abaixo a conta que deseja alterar:_",
+                    get_reminders_list_keyboard(reminders)
+                )
+            else:
+                return (
+                    f"⚠️ Não há nenhuma conta pendente cadastrada no perfil `{ws.name}` para alterar.",
+                    None
+                )
+
+    # 5. Alteração de Lançamento Efetivado (Valor, Data, etc.) via Inteligência Artificial
+    elif intent == "transaction_update" and parsed.transaction_update:
+        up = parsed.transaction_update
+        from app.models import Transaction
+
+        target_tx = None
+        query_str = (up.description_query or "").strip().lower()
+
+        # Busca transação
+        if query_str in ["ultimo", "último", "ultimo gasto", "último gasto", "ultima compra", "última compra", ""]:
+            target_tx = db.query(Transaction).filter(
+                Transaction.workspace_id == ws.id
+            ).order_by(Transaction.transaction_date.desc(), Transaction.id.desc()).first()
+        else:
+            # Tenta buscar por descrição
+            txs = db.query(Transaction).filter(
+                Transaction.workspace_id == ws.id,
+                Transaction.description.ilike(f"%{query_str}%")
+            ).order_by(Transaction.transaction_date.desc(), Transaction.id.desc()).all()
+            if txs:
+                target_tx = txs[0]
+            else:
+                # Fallback para a última transação
+                target_tx = db.query(Transaction).filter(
+                    Transaction.workspace_id == ws.id
+                ).order_by(Transaction.transaction_date.desc(), Transaction.id.desc()).first()
+
+        if not target_tx:
+            return "⚠️ Não encontrei nenhum lançamento recente neste perfil para alterar.", None
+
+        # Data alvo
+        target_date = None
+        if up.new_date:
+            try:
+                target_date = datetime.datetime.strptime(up.new_date, "%Y-%m-%d")
+            except Exception:
+                pass
+        elif up.date_offset_days is not None:
+            now = datetime.datetime.now()
+            target_date = now + datetime.timedelta(days=up.date_offset_days)
+
+        old_amount = target_tx.amount
+        old_date = target_tx.transaction_date.strftime("%d/%m/%Y")
+        
+        updated_tx = FinanceService.update_transaction(
+            db=db,
+            transaction_id=target_tx.id,
+            amount=up.new_amount if (up.new_amount and up.new_amount > 0) else None,
+            transaction_date=target_date
+        )
+
+        from telegram import InlineKeyboardMarkup, InlineKeyboardButton
+        markup = InlineKeyboardMarkup([[
+            InlineKeyboardButton("📑 Voltar ao Extrato", callback_data="back_to_extrato"),
+            InlineKeyboardButton("✏️ Outras Alterações", callback_data=f"menu_edit_tx_{updated_tx.id}")
+        ]])
+
+        changes = []
+        if up.new_amount and up.new_amount > 0:
+            changes.append(f"💰 Valor: ~{format_currency_br(old_amount)}~ ➔ *{format_currency_br(updated_tx.amount)}*")
+        if target_date:
+            changes.append(f"📅 Data: ~{old_date}~ ➔ *{updated_tx.transaction_date.strftime('%d/%m/%Y')}*")
+
+        changes_str = "\n".join(changes) if changes else f"💰 Valor: *{format_currency_br(updated_tx.amount)}*"
+        acc_info = f"\n💳 Saldo atual da conta ({updated_tx.account.name}): *{format_currency_br(updated_tx.account.current_balance)}*" if updated_tx.account else ""
+
+        msg = (
+            f"✅ *Lançamento Atualizado com Sucesso!*\n\n"
+            f"📝 *{updated_tx.description}*\n"
+            f"{changes_str}"
+            f"{acc_info}\n\n"
+            f"📊 _Os saldos e relatórios foram recalculados automaticamente._"
+        )
+        return msg, markup
+
+    # 5. Metas / Caixinhas
     elif intent == "goal_action" and parsed.goal:
         g = parsed.goal
         goal = GoalService.deposit_by_name(db, ws.id, g.goal_name, g.amount)

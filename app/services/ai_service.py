@@ -8,8 +8,8 @@ from typing import Optional, List, Dict, Any
 import httpx
 from app.config import settings
 from app.schemas.ai_response import (
-    AIParsedResult, ExtractedTransaction, ExtractedReminder, 
-    ExtractedGoalAction, ExtractedVehicleAction, ExtractedTransfer
+    AIParsedResult, ExtractedTransaction, ExtractedReminder, ExtractedReminderUpdate,
+    ExtractedTransactionUpdate, ExtractedGoalAction, ExtractedVehicleAction, ExtractedTransfer
 )
 from app.utils import format_currency_br, format_number_br
 
@@ -19,12 +19,14 @@ SYSTEM_PROMPT = """Você é o cérebro financeiro do Bot de Gestão Financeira I
 Sua missão é analisar mensagens dos usuários (texto livre, transcrição de áudios de voz ou fotos de cupons/recibos/notas fiscais/PDFs) e extrair os dados financeiros estruturados com máxima precisão.
 
 Você deve responder RIGOROSAMENTE em formato JSON com as chaves:
-- `intent`: Uma das opções: 'transaction_record', 'account_transfer', 'reminder_create', 'goal_action', 'vehicle_action', 'shopping_action', 'financial_query', 'profile_switch', 'general_chat'
-- `transactions`: Lista de transações encontradas: [{"type": "expense" ou "income", "amount": float, "description": str, "category_name": str, "payment_method": str, "date_offset_days": int, "items": [{"name": str, "quantity": float, "unit": str, "unit_price": float, "total_price": float, "category": str}]}]
+- `intent`: Uma das opções: 'transaction_record', 'transaction_update', 'account_transfer', 'reminder_create', 'reminder_update', 'goal_action', 'vehicle_action', 'shopping_action', 'financial_query', 'profile_switch', 'general_chat'
+- `transactions`: Lista de transações encontradas se for transaction_record: [{"type": "expense" ou "income", "amount": float, "description": str, "category_name": str, "payment_method": str, "date_offset_days": int, "items": [{"name": str, "quantity": float, "unit": str, "unit_price": float, "total_price": float, "category": str}]}]
   OBSERVAÇÃO SOBRE ITENS E UNIDADE DE MEDIDA: Sempre que o comprovante/cupom fiscal/nota fiscal/PDF contiver detalhamento de produtos (ex: compras de mercado, farmácia, atacado, materiais, consumo detalhado), extraia na chave `items` cada produto individualmente com nome, quantidade, unidade, preço unitário e valor total.
   ATENÇÃO À UNIDADE COMERCIAL: Itens vendidos a granel ou por peso na balança (ex: Pão Francês, Pão de Sal, Pão de Queijo a peso, Queijo/Presunto fatiado, Carnes/Açougue/Frango/Peixe, Hortifruti/Frutas/Legumes/Verduras) SEMPRE devem ter a unidade `kg` (ou `g`), NUNCA `un`. Para produtos em embalagens fechadas use `un`, `pct`, `cx` ou `l`.
+- `transaction_update`: Se for transaction_update (alterar/corrigir valor ou data de um lançamento/gasto/receita já efetivado no extrato): {"description_query": str (termo de busca como 'mercado', 'almoço', 'posto' ou 'ultimo'), "new_amount": float ou null, "new_date": "YYYY-MM-DD" ou null, "date_offset_days": int ou null (ex: -1 para ontem, 0 para hoje)}
 - `transfer`: Se for account_transfer (transferência entre contas, bancos, dinheiro, saques, depósitos): {"from_account": str (conta devedora/origem), "to_account": str (conta credora/destino), "amount": float, "description": str}
 - `reminder`: Se for reminder_create: {"title": str, "amount": float, "type": "to_pay" ou "to_receive", "due_date": "YYYY-MM-DD", "recurrence": "none"|"monthly"|"weekly"}
+- `reminder_update`: Se for reminder_update (alterar/mudar/adiar a data de vencimento OU alterar valor de uma conta/lembrete/boleto existente): {"title": str, "new_due_date": "YYYY-MM-DD" ou null, "new_amount": float ou null}
 - `goal`: Se for goal_action: {"action": "deposit"|"create"|"check", "goal_name": str, "amount": float}
 - `vehicle`: Se for vehicle_action: {"type": "fuel"|"oil_change"|"revision"|"repair"|"odometer", "description": str, "amount": float, "km": float, "next_due_km": float ou null}
 - `shopping`: Se for shopping_action: {"items": [{"name": str, "quantity": float, "unit": str, "estimated_price": float}]}
@@ -35,12 +37,20 @@ Você deve responder RIGOROSAMENTE em formato JSON com as chaves:
 class AIService:
     def __init__(self):
         self.models = [
-            "gemini-3.1-flash-lite",
-            "gemini-3.7-flash",
-            "gemini-3.5-flash",
+            "gemini-flash-lite-latest",
+            "gemini-3.1-flash-lite-preview",
             "gemini-3.6-flash",
-            "gemini-flash-latest"
+            "gemini-3-flash-preview"
         ]
+        self._client: Optional[httpx.AsyncClient] = None
+
+    def get_client(self) -> httpx.AsyncClient:
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(15.0, connect=5.0),
+                limits=httpx.Limits(max_keepalive_connections=20, max_connections=50)
+            )
+        return self._client
 
     @property
     def api_key(self) -> str:
@@ -50,7 +60,7 @@ class AIService:
         return bool(self.api_key and self.api_key != "SUA_GEMINI_API_KEY_AQUI")
 
     async def _call_gemini(self, parts: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
-        """Executa a chamada HTTP assíncrona para a API do Gemini com failover automático de modelos"""
+        """Executa a chamada HTTP assíncrona para a API do Gemini com client pool e failover rápido"""
         if not self.is_gemini_active():
             return None
 
@@ -66,25 +76,54 @@ class AIService:
             }
         }
 
-        async with httpx.AsyncClient(timeout=45.0) as client:
-            for model_name in self.models:
-                url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
-                try:
-                    response = await client.post(url, json=payload)
+        client = self.get_client()
+        for model_name in self.models:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_name}:generateContent?key={self.api_key}"
+            try:
+                response = await client.post(url, json=payload)
 
-                    if response.status_code == 200:
-                        data = response.json()
-                        raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
-                        return json.loads(raw_text)
-                    else:
-                        logger.warning(f"Modelo {model_name} retornou status {response.status_code}. Tentando próximo modelo...")
-                except Exception as e:
-                    logger.warning(f"Exceção no modelo {model_name}: {e}. Tentando próximo modelo...")
+                if response.status_code == 200:
+                    data = response.json()
+                    raw_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    return json.loads(raw_text)
+                else:
+                    logger.warning(f"Modelo {model_name} retornou status {response.status_code}. Tentando próximo modelo...")
+            except Exception as e:
+                logger.warning(f"Exceção no modelo {model_name}: {e}. Tentando próximo modelo...")
 
         return None
 
+    def _is_clean_fast_path(self, text: str) -> bool:
+        """Verifica se a mensagem é um comando financeiro direto e objetivo que pode ser processado instantaneamente"""
+        text_clean = text.strip()
+        words = text_clean.split()
+        if len(words) > 12:
+            return False  # Sentenças longas ou conversacionais vão para IA
+
+        # Se tiver interrogação, provavelmente é pergunta que requer IA
+        if "?" in text:
+            return False
+
+        # Verifica padrões simples de gasto ou receita: [descrição] [valor] [conta/forma]
+        # Ex: "Almoço 40", "Gasolina 150 dinheiro", "Gastei 50 no mercado", "Recebi 1200 freela pix", "Salário 5000"
+        has_number = bool(re.search(r"\d+(?:[.,]\d{1,2})?", text))
+        if not has_number:
+            return False
+
+        return True
+
     async def parse_text(self, text: str, user_context: Optional[Dict[str, Any]] = None) -> AIParsedResult:
-        """Analisa mensagem de texto usando Gemini ou Fallback"""
+        """Analisa mensagem de texto usando Fast-Path instantâneo ou Gemini ultra-rápido com fallback"""
+        # 1. Tenta Fast-Path local para resposta em < 5ms em comandos simples e objetivos
+        if self._is_clean_fast_path(text):
+            try:
+                fast_result = self._fallback_parse_text(text)
+                if fast_result and fast_result.intent != "general_chat":
+                    return fast_result
+            except Exception:
+                pass
+
+        # 2. Chama a IA Gemini com o modelo mais rápido e preciso
         if self.is_gemini_active():
             context_str = f"Data atual: {datetime.now().strftime('%Y-%m-%d %H:%M')}\nContexto: {json.dumps(user_context or {}, ensure_ascii=False)}"
             prompt = f"{context_str}\nMensagem do usuário: \"{text}\""
@@ -491,7 +530,131 @@ class AIService:
                 friendly_response=f"🎯 *Meta {nome_meta} atualizada!* Valor: *{format_currency_br(valor)}*."
             )
 
-        # 5. Lembretes e Contas a Vencer
+        # 5. Alteração / Edição de Lançamentos Efetivados (Gastos/Receitas já registrados)
+        is_reminder_term = any(w in text_lower for w in ["conta de", "boleto", "vencimento", "fatura", "conta da", "conta do", "lembrete", "luz", "água", "agua", "aluguel", "condomínio", "condominio", "internet"])
+        is_tx_edit_keyword = any(w in text_lower for w in [
+            "alterar valor", "mudar valor", "corrigir valor", "alterar data", "mudar data", "trocar data", "corrigir data",
+            "alterar o valor", "mudar o valor", "corrigir o valor", "alterar a data", "mudar a data", "trocar a data",
+            "editar valor", "editar lançamento", "editar gasto", "editar data", "alterar último", "alterar ultimo",
+            "mudar último", "mudar ultimo", "corrigir último", "corrigir ultimo", "alterar lançamento", "mudar lançamento"
+        ])
+
+        if is_tx_edit_keyword and not is_reminder_term:
+            # Extrai novo valor se informado
+            new_val = None
+            val_match = re.search(r"(?:para\s*(?:r\$\s*)?|r\$\s*)(\d+(?:[.,]\d{1,2})?)", text_lower)
+            if val_match:
+                try:
+                    new_val = float(val_match.group(1).replace(",", "."))
+                except Exception:
+                    pass
+
+            # Extrai nova data se informada
+            now = datetime.now()
+            new_date_str = None
+            offset_days = None
+            if "ontem" in text_lower:
+                offset_days = -1
+                dt = now - timedelta(days=1)
+                new_date_str = dt.strftime("%Y-%m-%d")
+            elif "hoje" in text_lower:
+                offset_days = 0
+                new_date_str = now.strftime("%Y-%m-%d")
+            else:
+                date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{4}|\d{1,2}/\d{1,2})", text_lower)
+                if date_match:
+                    d_raw = date_match.group(1)
+                    d_parts = d_raw.split("/")
+                    if len(d_parts) == 3:
+                        ano = int(d_parts[2]) if len(d_parts[2]) == 4 else 2000 + int(d_parts[2])
+                        new_date_str = f"{ano:04d}-{int(d_parts[1]):02d}-{int(d_parts[0]):02d}"
+                    elif len(d_parts) == 2:
+                        d_day = int(d_parts[0])
+                        d_month = int(d_parts[1])
+                        d_year = now.year if (d_month > now.month or (d_month == now.month and d_day >= now.day)) else now.year + 1
+                        new_date_str = f"{d_year:04d}-{d_month:02d}-{d_day:02d}"
+
+            # Extrai termo de busca do lançamento
+            search_query = "ultimo"
+            query_match = re.search(r"(?:gasto\s+(?:d[aoe]\s+|no\s+|na\s+)?|compra\s+(?:d[aoe]\s+|no\s+|na\s+)?|lançamento\s+(?:d[aoe]\s+|no\s+|na\s+)?|valor\s+(?:d[aoe]\s+|no\s+|na\s+)?|data\s+(?:d[aoe]\s+|no\s+|na\s+)?)(.+?)(?:\s+para|\s+pr[ao]|$)", text_lower)
+            if query_match:
+                q = query_match.group(1).replace("último", "").replace("ultimo", "").replace("gasto", "").replace("lançamento", "").replace("compra", "").strip()
+                if q and len(q) > 1:
+                    search_query = q.title()
+
+            return AIParsedResult(
+                intent="transaction_update",
+                transaction_update=ExtractedTransactionUpdate(
+                    description_query=search_query,
+                    new_amount=new_val,
+                    new_date=new_date_str,
+                    date_offset_days=offset_days
+                ),
+                friendly_response=f"✏️ Solicitação para editar lançamento *{search_query}*."
+            )
+
+        # 6. Alteração de Data de Vencimento ou Valor de Contas/Lembretes Existentes
+        if any(w in text_lower for w in [
+            "alterar vencimento", "mudar vencimento", "trocar vencimento", "adiar vencimento",
+            "prorrogar vencimento", "postergar vencimento", "alterar a data de vencimento",
+            "mudar a data de vencimento", "adiar conta", "adiar o boleto", "adiar boleto",
+            "adiar fatura", "adiar o aluguel", "adiar aluguel", "prorrogar fatura", "prorrogar conta",
+            "alterar data da conta", "mudar data da conta", "alterar valor da conta", "mudar valor da conta",
+            "alterar valor do boleto", "mudar valor do boleto", "alterar valor da fatura", "mudar valor da fatura",
+            "corrigir valor da conta", "corrigir valor do boleto", "corrigir valor da fatura"
+        ]) or (is_tx_edit_keyword and is_reminder_term):
+            # Extrai nova data se informada
+            now = datetime.now()
+            due_str = None
+            date_match = re.search(r"(\d{1,2}/\d{1,2}/\d{4}|\d{1,2}/\d{1,2})", text_lower)
+            if date_match:
+                d_raw = date_match.group(1)
+                d_parts = d_raw.split("/")
+                if len(d_parts) == 3:
+                    ano = int(d_parts[2]) if len(d_parts[2]) == 4 else 2000 + int(d_parts[2])
+                    due_str = f"{ano:04d}-{int(d_parts[1]):02d}-{int(d_parts[0]):02d}"
+                elif len(d_parts) == 2:
+                    d_day = int(d_parts[0])
+                    d_month = int(d_parts[1])
+                    d_year = now.year if (d_month > now.month or (d_month == now.month and d_day >= now.day)) else now.year + 1
+                    due_str = f"{d_year:04d}-{d_month:02d}-{d_day:02d}"
+            elif "dia " in text_lower:
+                dia_match = re.search(r"(?:dia\s*)(\d{1,2})", text_lower)
+                if dia_match:
+                    d_day = int(dia_match.group(1))
+                    d_month = now.month if d_day >= now.day else (now.month % 12) + 1
+                    d_year = now.year if d_day >= now.day or d_month > 1 else now.year + 1
+                    due_str = f"{d_year:04d}-{d_month:02d}-{d_day:02d}"
+
+            # Extrai novo valor se informado
+            new_amount_val = None
+            if "valor" in text_lower or "r$" in text_lower or "reais" in text_lower:
+                val_m = re.search(r"(?:para\s*(?:r\$\s*)?|r\$\s*)(\d+(?:[.,]\d{1,2})?)", text_lower)
+                if val_m:
+                    try:
+                        new_amount_val = float(val_m.group(1).replace(",", "."))
+                    except Exception:
+                        pass
+
+            # Extrai nome da conta / termo de busca
+            title = "Conta"
+            tit_match = re.search(r"(?:vencimento\s+(?:d[aoe]\s+)?|adiar\s+(?:a\s+|o\s+)?|prorrogar\s+(?:a\s+|o\s+)?|mudar\s+(?:a\s+data\s+d[aoe]\s+|o\s+valor\s+d[aoe]\s+)?|alterar\s+(?:o\s+valor\s+d[aoe]\s+|a\s+data\s+d[aoe]\s+)?)(.+?)(?:\s+para\s+|\s+pr[ao]\s+|$)", text_lower)
+            if tit_match:
+                extracted_t = tit_match.group(1).replace("data de", "").replace("vencimento", "").replace("valor de", "").replace("valor da", "").replace("valor do", "").replace("da conta de", "").replace("do boleto", "").strip()
+                if extracted_t and len(extracted_t) > 1:
+                    title = extracted_t.title()
+
+            return AIParsedResult(
+                intent="reminder_update",
+                reminder_update=ExtractedReminderUpdate(
+                    title=title,
+                    new_due_date=due_str,
+                    new_amount=new_amount_val
+                ),
+                friendly_response=f"📅 Solicitação para alterar dados da conta *{title}*."
+            )
+
+        # 7. Lembretes e Contas a Vencer (Criação)
         if any(w in text_lower for w in ["lembrar", "vencimento", "vence", "conta de", "pagar internet", "pagar luz", "pagar aluguel", "pagar condomínio"]):
             # Extrai dia
             dia_match = re.search(r"(?:dia\s*)(\d{1,2})", text_lower)

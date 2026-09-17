@@ -21,7 +21,10 @@ from app.bot.handlers.commands import (
     entrar_handler,
     zerar_handler,
     login_handler,
-    logout_handler
+    logout_handler,
+    cupom_handler,
+    despesas_handler,
+    receitas_handler
 )
 from app.bot.handlers.text_voice_photo import (
     text_message_handler,
@@ -66,6 +69,25 @@ def create_bot_app():
     app.add_handler(CommandHandler("zerar", zerar_handler))
     app.add_handler(CommandHandler("zerarconta", zerar_handler))
     app.add_handler(CommandHandler("limpar", zerar_handler))
+    app.add_handler(CommandHandler("cupom", cupom_handler))
+    app.add_handler(CommandHandler("cupons", cupom_handler))
+    app.add_handler(CommandHandler("itens", cupom_handler))
+    app.add_handler(CommandHandler("notafiscal", cupom_handler))
+    app.add_handler(CommandHandler("nota", cupom_handler))
+    app.add_handler(CommandHandler("produtos", cupom_handler))
+    app.add_handler(CommandHandler("despesas", despesas_handler))
+    app.add_handler(CommandHandler("despesa", despesas_handler))
+    app.add_handler(CommandHandler("gastos", despesas_handler))
+    app.add_handler(CommandHandler("gastosmes", despesas_handler))
+    app.add_handler(CommandHandler("despesasmes", despesas_handler))
+    app.add_handler(CommandHandler("despesasconta", despesas_handler))
+    app.add_handler(CommandHandler("gastosconta", despesas_handler))
+    app.add_handler(CommandHandler("receitas", receitas_handler))
+    app.add_handler(CommandHandler("receita", receitas_handler))
+    app.add_handler(CommandHandler("entradas", receitas_handler))
+    app.add_handler(CommandHandler("ganhos", receitas_handler))
+    app.add_handler(CommandHandler("receitasmes", receitas_handler))
+    app.add_handler(CommandHandler("receitasconta", receitas_handler))
 
     # Handlers Multimodais (Texto, Voz, Foto, Documentos)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))

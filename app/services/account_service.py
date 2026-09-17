@@ -1,6 +1,7 @@
 import datetime
 from typing import List, Optional, Dict, Any
 from sqlalchemy.orm import Session
+from sqlalchemy import func, extract
 from app.models import Account, Transaction, Workspace
 
 DEFAULT_ACCOUNTS = [
@@ -31,8 +32,52 @@ class AccountService:
             db.commit()
 
     @staticmethod
+    def recalculate_account_balance(db: Session, account_id: int) -> float:
+        """
+        Recalcula com precisão matemática o saldo de uma conta bancária
+        a partir do saldo inicial e de todas as transações cadastradas no banco de dados.
+        """
+        acc = db.query(Account).filter(Account.id == account_id).first()
+        if not acc:
+            return 0.0
+
+        inc = float(db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+            Transaction.account_id == acc.id,
+            Transaction.type == "income"
+        ).scalar() or 0.0)
+
+        exp = float(db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+            Transaction.account_id == acc.id,
+            Transaction.type == "expense"
+        ).scalar() or 0.0)
+
+        acc.current_balance = round((acc.initial_balance or 0.0) + inc - exp, 2)
+        db.commit()
+        return acc.current_balance
+
+    @staticmethod
+    def recalculate_account_balances(db: Session, workspace_id: int):
+        """
+        Recalcula os saldos de todas as contas do workspace a partir do banco de dados.
+        """
+        accounts = db.query(Account).filter(Account.workspace_id == workspace_id).all()
+        for acc in accounts:
+            inc = float(db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+                Transaction.account_id == acc.id,
+                Transaction.type == "income"
+            ).scalar() or 0.0)
+
+            exp = float(db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+                Transaction.account_id == acc.id,
+                Transaction.type == "expense"
+            ).scalar() or 0.0)
+
+            acc.current_balance = round((acc.initial_balance or 0.0) + inc - exp, 2)
+        db.commit()
+
+    @staticmethod
     def get_accounts(db: Session, workspace_id: int, active_only: bool = False) -> List[Account]:
-        """Retorna as contas do workspace, criando as padrões se vazio e mantendo integridade dos saldos"""
+        """Retorna as contas do workspace, garantindo que os saldos estejam 100% calculados e íntegros"""
         query = db.query(Account).filter(Account.workspace_id == workspace_id)
         if active_only:
             query = query.filter(Account.is_active == True)
@@ -41,11 +86,17 @@ class AccountService:
             AccountService.seed_default_accounts(db, workspace_id)
             accounts = db.query(Account).filter(Account.workspace_id == workspace_id).order_by(Account.id.asc()).all()
 
-        # Garante a integridade exata do saldo atual (Saldo Inicial + Entradas - Saídas)
+        # Recalcula saldos com base no banco de dados para evitar qualquer descompasso
         for acc in accounts:
-            income_total = sum(t.amount for t in acc.transactions if t.type == "income")
-            expense_total = sum(t.amount for t in acc.transactions if t.type == "expense")
-            acc.current_balance = round((acc.initial_balance or 0.0) + income_total - expense_total, 2)
+            inc = float(db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+                Transaction.account_id == acc.id,
+                Transaction.type == "income"
+            ).scalar() or 0.0)
+            exp = float(db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+                Transaction.account_id == acc.id,
+                Transaction.type == "expense"
+            ).scalar() or 0.0)
+            acc.current_balance = round((acc.initial_balance or 0.0) + inc - exp, 2)
         db.commit()
 
         return accounts
@@ -61,12 +112,13 @@ class AccountService:
         color: str = "#6366f1",
         is_active: bool = True
     ) -> Account:
+        init_val = round(float(initial_balance or 0.0), 2)
         acc = Account(
             workspace_id=workspace_id,
             name=name.strip(),
             type=type,
-            initial_balance=initial_balance,
-            current_balance=initial_balance,
+            initial_balance=init_val,
+            current_balance=init_val,
             icon=icon or "🏦",
             color=color or "#6366f1",
             is_active=is_active
@@ -94,7 +146,7 @@ class AccountService:
         initial_balance: Optional[float] = None,
         is_active: Optional[bool] = None
     ) -> Optional[Account]:
-        """Atualiza os dados de uma conta bancária e recalcula o saldo se o saldo inicial mudar"""
+        """Atualiza os dados de uma conta bancária e recalcula seu saldo exato"""
         acc = db.query(Account).filter(Account.id == account_id).first()
         if not acc:
             return None
@@ -110,17 +162,51 @@ class AccountService:
         if is_active is not None:
             acc.is_active = is_active
         if initial_balance is not None:
-            diff = initial_balance - (acc.initial_balance or 0.0)
-            acc.initial_balance = initial_balance
-            acc.current_balance = (acc.current_balance or 0.0) + diff
+            acc.initial_balance = round(float(initial_balance), 2)
+
+        db.commit()
+        AccountService.recalculate_account_balance(db, acc.id)
+        db.refresh(acc)
 
         ws_id = acc.workspace_id
+        try:
+            from app.services.event_bus import event_bus
+            event_bus.notify_workspace_update(ws_id)
+        except Exception:
+            pass
+
+        return acc
+
+    @staticmethod
+    def set_account_balance(db: Session, account_id: int, target_current_balance: float) -> Optional[Account]:
+        """
+        Ajusta o saldo atual de uma conta para o valor exato desejado pelo usuário,
+        calibrando o saldo inicial necessário para que a equação (inicial + entradas - saídas)
+        resulte exatamente no saldo atual informado.
+        """
+        acc = db.query(Account).filter(Account.id == account_id).first()
+        if not acc:
+            return None
+
+        inc = float(db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+            Transaction.account_id == acc.id,
+            Transaction.type == "income"
+        ).scalar() or 0.0)
+
+        exp = float(db.query(func.coalesce(func.sum(Transaction.amount), 0.0)).filter(
+            Transaction.account_id == acc.id,
+            Transaction.type == "expense"
+        ).scalar() or 0.0)
+
+        acc.initial_balance = round(target_current_balance - inc + exp, 2)
+        acc.current_balance = round(target_current_balance, 2)
+
         db.commit()
         db.refresh(acc)
 
         try:
             from app.services.event_bus import event_bus
-            event_bus.notify_workspace_update(ws_id)
+            event_bus.notify_workspace_update(acc.workspace_id)
         except Exception:
             pass
 
@@ -168,7 +254,9 @@ class AccountService:
 
     @staticmethod
     def find_account_by_name(db: Session, workspace_id: int, name: str) -> Optional[Account]:
-        """Localiza uma conta pelo nome ou substring (ex: 'caixa', 'bb', 'santander', 'nubank')"""
+        """Localiza uma conta pelo nome ou apelido (ex: 'caixa', 'bb', 'santander', 'nubank')"""
+        if not name:
+            return None
         name_clean = name.lower().strip()
         accounts = AccountService.get_accounts(db, workspace_id)
         
@@ -187,41 +275,48 @@ class AccountService:
         }
         target = aliases.get(name_clean, name_clean)
 
+        # 1. Match exato prioritário
         for acc in accounts:
-            acc_name_lower = acc.name.lower()
-            if acc_name_lower in target or target in acc_name_lower:
+            acc_name_lower = acc.name.lower().strip()
+            if acc_name_lower == target:
                 return acc
+
+        # 2. Substring (somente se target tiver pelo menos 3 caracteres para evitar falsos positivos)
+        if len(target) >= 3:
+            for acc in accounts:
+                acc_name_lower = acc.name.lower().strip()
+                if target in acc_name_lower or acc_name_lower in target:
+                    return acc
+
         return None
 
     @staticmethod
     def set_transaction_account(db: Session, transaction_id: int, account_id: int) -> Optional[Transaction]:
-        """Vincula uma transação a uma conta específica e recalcula o saldo da conta"""
+        """Vincula uma transação a uma conta específica e recalcula os saldos com precisão"""
         tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
         acc = db.query(Account).filter(Account.id == account_id).first()
         if not tx or not acc:
             return None
 
-        # Se já tinha outra conta antes, estorna o saldo anterior
-        if tx.account_id and tx.account_id != account_id:
-            old_acc = db.query(Account).filter(Account.id == tx.account_id).first()
-            if old_acc:
-                if tx.type == "income":
-                    old_acc.current_balance -= tx.amount
-                else:
-                    old_acc.current_balance += tx.amount
+        old_acc_id = tx.account_id
 
         # Atualiza a conta na transação
         tx.account_id = acc.id
         tx.payment_method = acc.name
-
-        # Atualiza o saldo da nova conta
-        if tx.type == "income":
-            acc.current_balance += tx.amount
-        else:
-            acc.current_balance -= tx.amount
-
         db.commit()
         db.refresh(tx)
+
+        # Recalcula saldos reais
+        if old_acc_id and old_acc_id != acc.id:
+            AccountService.recalculate_account_balance(db, old_acc_id)
+        AccountService.recalculate_account_balance(db, acc.id)
+
+        try:
+            from app.services.event_bus import event_bus
+            event_bus.notify_workspace_update(tx.workspace_id)
+        except Exception:
+            pass
+
         return tx
 
     @staticmethod
@@ -303,12 +398,12 @@ class AccountService:
             notes=f"transfer_from_account_id:{from_acc.id}"
         )
         db.add(tx_in)
-
-        # Atualiza os saldos acumulados de ambas as contas
-        from_acc.current_balance = (from_acc.current_balance or 0.0) - abs(amount)
-        to_acc.current_balance = (to_acc.current_balance or 0.0) + abs(amount)
-
         db.commit()
+
+        # Recalcula saldos reais
+        AccountService.recalculate_account_balance(db, from_acc.id)
+        AccountService.recalculate_account_balance(db, to_acc.id)
+
         db.refresh(from_acc)
         db.refresh(to_acc)
         db.refresh(tx_out)
@@ -330,16 +425,6 @@ class AccountService:
         }
 
     @staticmethod
-    def recalculate_account_balances(db: Session, workspace_id: int):
-        """Recalcula os saldos de todas as contas a partir das transações existentes"""
-        accounts = db.query(Account).filter(Account.workspace_id == workspace_id).all()
-        for acc in accounts:
-            income_total = sum(t.amount for t in acc.transactions if t.type == "income")
-            expense_total = sum(t.amount for t in acc.transactions if t.type == "expense")
-            acc.current_balance = (acc.initial_balance or 0.0) + income_total - expense_total
-        db.commit()
-
-    @staticmethod
     def zero_account(
         db: Session,
         workspace_id: int,
@@ -348,7 +433,6 @@ class AccountService:
         month: Optional[int] = None
     ) -> Dict[str, Any]:
         """Zera o saldo e as movimentações de uma conta bancária específica no mês selecionado"""
-        from sqlalchemy import extract
         acc = db.query(Account).filter(Account.id == account_id, Account.workspace_id == workspace_id).first()
         if not acc:
             return {"success": False, "message": "Conta não encontrada."}
@@ -367,12 +451,11 @@ class AccountService:
         deleted_count = tx_query.count()
         tx_query.delete(synchronize_session=False)
 
-        # Recalcula saldo da conta
-        income_total = sum(t.amount for t in acc.transactions if t.type == "income")
-        expense_total = sum(t.amount for t in acc.transactions if t.type == "expense")
-        acc.current_balance = (acc.initial_balance or 0.0) + income_total - expense_total
-
         db.commit()
+        db.expire_all()
+
+        # Recalcula saldo da conta
+        AccountService.recalculate_account_balance(db, acc.id)
         db.refresh(acc)
 
         try:
@@ -398,7 +481,6 @@ class AccountService:
         month: Optional[int] = None
     ) -> Dict[str, Any]:
         """Zera todos os lançamentos financeiros do mês selecionado em todo o workspace"""
-        from sqlalchemy import extract
         now = datetime.datetime.utcnow()
         target_year = year or now.year
         target_month = month or now.month
@@ -411,10 +493,11 @@ class AccountService:
         deleted_count = tx_query.count()
         tx_query.delete(synchronize_session=False)
 
+        db.commit()
+        db.expire_all()
+
         # Recalcula os saldos de todas as contas
         AccountService.recalculate_account_balances(db, workspace_id)
-
-        db.commit()
 
         try:
             from app.services.event_bus import event_bus
@@ -429,4 +512,3 @@ class AccountService:
             "month": target_month,
             "message": f"Todos os lançamentos de {target_month:02d}/{target_year} foram zerados com sucesso! ({deleted_count} registros excluídos)"
         }
-

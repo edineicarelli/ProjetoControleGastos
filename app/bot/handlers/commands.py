@@ -14,10 +14,13 @@ from app.bot.keyboards import (
     get_reminder_action_keyboard,
     get_reminders_list_keyboard,
     get_extrato_keyboard,
+    get_account_filter_keyboard,
+    get_expenses_by_account_keyboard,
     get_main_reply_keyboard
 )
 from app.bot.handlers.auth_helper import get_authenticated_bot_user
 from app.utils import format_currency_br, format_number_br
+from app.services.account_service import AccountService
 
 logger = logging.getLogger(__name__)
 
@@ -141,29 +144,224 @@ async def saldo_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         db.close()
 
 async def extrato_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando /extrato ou botão Últimos Gastos"""
+    """Comando /extrato [conta] [despesas/receitas] ou botão Últimos Gastos"""
     db = SessionLocal()
     try:
         user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
         if not user or not ws:
             return
 
-        from app.models import Transaction
-        txs = db.query(Transaction).filter(Transaction.workspace_id == ws.id).order_by(Transaction.transaction_date.desc()).limit(8).all()
+        args = context.args or []
+        target_type = "all"
+        target_acc = None
+
+        if args:
+            args_str = " ".join(args).lower()
+            if any(w in args_str for w in ["despesa", "despesas", "gasto", "gastos", "saida", "saidas"]):
+                target_type = "expense"
+            elif any(w in args_str for w in ["receita", "receitas", "entrada", "entradas", "ganho", "ganhos"]):
+                target_type = "income"
+
+            for word in args:
+                clean_word = word.lower().strip()
+                if clean_word not in ["despesa", "despesas", "gasto", "gastos", "receita", "receitas", "todas", "tudo", "extrato"]:
+                    acc = AccountService.find_account_by_name(db, ws.id, clean_word)
+                    if acc:
+                        target_acc = acc
+                        break
+
+        tx_type_param = None if target_type == "all" else target_type
+        acc_id_param = target_acc.id if target_acc else None
+
+        txs = FinanceService.get_filtered_transactions(
+            db=db,
+            workspace_id=ws.id,
+            tx_type=tx_type_param,
+            account_id=acc_id_param,
+            limit=8
+        )
+
+        acc_name = f" - {target_acc.icon} {target_acc.name}" if target_acc else ""
+        type_badge = " (🔴 Só Despesas)" if target_type == "expense" else (" (🟢 Só Receitas)" if target_type == "income" else "")
+        title = f"📑 *Extrato: {ws.name}{acc_name}{type_badge}*"
 
         if not txs:
-            await update.message.reply_text("📭 Nenhuma movimentação registrada recentemente neste perfil.")
+            empty_msg = f"{title}\n───────────────────\n📭 Nenhuma movimentação encontrada para os filtros selecionados."
+            await update.message.reply_text(
+                empty_msg,
+                parse_mode="Markdown",
+                reply_markup=get_extrato_keyboard(txs=[], current_type=target_type, current_acc_id=acc_id_param)
+            )
             return
 
-        msg = f"📑 *Últimos Lançamentos - {ws.name}:*\n───────────────────\n"
+        msg = f"{title}\n───────────────────\n"
         for t in txs:
             icon = "🟢 +" if t.type == "income" else "🔴 -"
             cat = t.category.name if t.category else "Outros"
             dt = t.transaction_date.strftime("%d/%m")
             items_badge = f" • 🛒 {t.items_count} itens" if t.items_count > 0 else ""
-            msg += f"{icon} *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 💳 _{t.payment_method}_ • 📅 _{dt}_\n\n"
+            acc_label = t.account.name if t.account else t.payment_method
+            msg += f"{icon} *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 💳 _{acc_label}_ • 📅 _{dt}_\n\n"
 
-        await update.message.reply_text(msg, parse_mode="Markdown", reply_markup=get_extrato_keyboard(txs))
+        await update.message.reply_text(
+            msg,
+            parse_mode="Markdown",
+            reply_markup=get_extrato_keyboard(txs=txs, current_type=target_type, current_acc_id=acc_id_param)
+        )
+    finally:
+        db.close()
+
+async def despesas_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /despesas ou /gastos para listar despesas do mês e agrupamento por contas"""
+    db = SessionLocal()
+    try:
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
+        args = context.args or []
+        target_acc = None
+        if args:
+            acc_name_query = " ".join(args).strip()
+            target_acc = AccountService.find_account_by_name(db, ws.id, acc_name_query)
+
+        if target_acc:
+            stats = FinanceService.get_account_monthly_stats(db, ws.id, target_acc.id)
+            txs = FinanceService.get_filtered_transactions(db, ws.id, tx_type="expense", account_id=target_acc.id, limit=8)
+
+            msg = (
+                f"🔴 *Despesas do Mês - {target_acc.icon} {target_acc.name}*\n"
+                f"📍 *Contexto:* `{ws.name}`\n"
+                f"───────────────────\n"
+                f"💸 *Total Gasto no Mês:* {format_currency_br(stats.get('total_expense', 0))}\n"
+                f"💰 *Saldo Atual da Conta:* {format_currency_br(target_acc.current_balance)}\n"
+                f"📊 *Total de Despesas:* {len(txs)} lançamentos\n"
+                f"───────────────────\n\n"
+            )
+            if not txs:
+                msg += "📭 _Nenhuma despesa registrada nesta conta no mês atual._"
+            else:
+                msg += "*Últimos Gastos Registrados:*\n"
+                for t in txs:
+                    cat = t.category.name if t.category else "Outros"
+                    dt = t.transaction_date.strftime("%d/%m")
+                    items_badge = f" • 🛒 {t.items_count} itens" if t.items_count > 0 else ""
+                    msg += f"🔴 *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 📅 _{dt}_\n\n"
+
+            await update.message.reply_text(
+                msg,
+                parse_mode="Markdown",
+                reply_markup=get_extrato_keyboard(txs=txs, current_type="expense", current_acc_id=target_acc.id)
+            )
+            return
+
+        summary = FinanceService.get_expenses_by_account_summary(db, ws.id)
+        txs = FinanceService.get_filtered_transactions(db, ws.id, tx_type="expense", limit=6)
+
+        msg = (
+            f"🔴 *Despesas do Mês & Por Conta*\n"
+            f"📍 *Contexto:* `{ws.name}`\n"
+            f"───────────────────\n"
+            f"💸 *Total Geral de Despesas:* {format_currency_br(summary['total_expense'])}\n"
+            f"───────────────────\n"
+            f"🏦 *Detalhamento por Conta Bancária:*\n"
+        )
+
+        for acc_info in summary["accounts"]:
+            if acc_info["expense_total"] > 0 or acc_info.get("account_id") is not None:
+                icon = acc_info.get("icon", "💳")
+                name = acc_info["name"]
+                spent = format_currency_br(acc_info["expense_total"])
+                pct = acc_info["expense_percentage"]
+                bal = format_currency_br(acc_info["current_balance"])
+                msg += f"{icon} *{name}:* {spent} ({pct:.0f}%) • _Saldo: {bal}_\n"
+
+        msg += f"───────────────────\n"
+        if txs:
+            msg += f"\n👇 *Últimos Gastos Registrados:*\n"
+            for t in txs:
+                cat = t.category.name if t.category else "Outros"
+                dt = t.transaction_date.strftime("%d/%m")
+                acc_label = t.account.name if t.account else t.payment_method
+                items_badge = f" • 🛒 {t.items_count} itens" if t.items_count > 0 else ""
+                msg += f"🔴 *{format_currency_br(t.amount)}* | {t.description}{items_badge}\n   🏷️ _{cat}_ • 💳 _{acc_label}_ • 📅 _{dt}_\n\n"
+
+        await update.message.reply_text(
+            msg,
+            parse_mode="Markdown",
+            reply_markup=get_expenses_by_account_keyboard(summary["accounts"])
+        )
+    finally:
+        db.close()
+
+async def receitas_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /receitas ou /entradas para listar receitas do mês e por conta"""
+    db = SessionLocal()
+    try:
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
+        args = context.args or []
+        target_acc = None
+        if args:
+            acc_name_query = " ".join(args).strip()
+            target_acc = AccountService.find_account_by_name(db, ws.id, acc_name_query)
+
+        if target_acc:
+            stats = FinanceService.get_account_monthly_stats(db, ws.id, target_acc.id)
+            txs = FinanceService.get_filtered_transactions(db, ws.id, tx_type="income", account_id=target_acc.id, limit=8)
+
+            msg = (
+                f"🟢 *Receitas do Mês - {target_acc.icon} {target_acc.name}*\n"
+                f"📍 *Contexto:* `{ws.name}`\n"
+                f"───────────────────\n"
+                f"💰 *Total Recebido no Mês:* {format_currency_br(stats.get('total_income', 0))}\n"
+                f"🏦 *Saldo Atual da Conta:* {format_currency_br(target_acc.current_balance)}\n"
+                f"📊 *Total de Entradas:* {len(txs)} lançamentos\n"
+                f"───────────────────\n\n"
+            )
+            if not txs:
+                msg += "📭 _Nenhuma receita registrada nesta conta no mês atual._"
+            else:
+                msg += "*Últimas Receitas Registradas:*\n"
+                for t in txs:
+                    cat = t.category.name if t.category else "Receita"
+                    dt = t.transaction_date.strftime("%d/%m")
+                    msg += f"🟢 *{format_currency_br(t.amount)}* | {t.description}\n   🏷️ _{cat}_ • 📅 _{dt}_\n\n"
+
+            await update.message.reply_text(
+                msg,
+                parse_mode="Markdown",
+                reply_markup=get_extrato_keyboard(txs=txs, current_type="income", current_acc_id=target_acc.id)
+            )
+            return
+
+        summary = FinanceService.get_monthly_summary(db, ws.id)
+        txs = FinanceService.get_filtered_transactions(db, ws.id, tx_type="income", limit=8)
+
+        msg = (
+            f"🟢 *Receitas do Mês*\n"
+            f"📍 *Contexto:* `{ws.name}`\n"
+            f"───────────────────\n"
+            f"💰 *Total de Receitas:* {format_currency_br(summary['total_income'])}\n"
+            f"───────────────────\n\n"
+        )
+        if not txs:
+            msg += "📭 _Nenhuma receita registrada neste perfil no mês atual._"
+        else:
+            msg += "*Últimas Receitas Registradas:*\n"
+            for t in txs:
+                cat = t.category.name if t.category else "Receita"
+                dt = t.transaction_date.strftime("%d/%m")
+                acc_label = t.account.name if t.account else t.payment_method
+                msg += f"🟢 *{format_currency_br(t.amount)}* | {t.description}\n   🏷️ _{cat}_ • 💳 _{acc_label}_ • 📅 _{dt}_\n\n"
+
+        await update.message.reply_text(
+            msg,
+            parse_mode="Markdown",
+            reply_markup=get_extrato_keyboard(txs=txs, current_type="income", current_acc_id=None)
+        )
     finally:
         db.close()
 
@@ -461,3 +659,75 @@ async def zerar_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
     finally:
         db.close()
+
+async def cupom_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /cupom, /cupons, /itens, /notafiscal para visualizar itens de compras e cupons fiscais"""
+    db = SessionLocal()
+    try:
+        user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
+        if not user or not ws:
+            return
+
+        from app.models import Transaction
+        from app.bot.keyboards import get_cupom_detail_keyboard, get_cupons_list_keyboard
+        from app.utils import format_full_receipt_text
+
+        # Busca transações com itens do workspace
+        tx_query = db.query(Transaction).filter(
+            Transaction.workspace_id == ws.id
+        ).order_by(Transaction.transaction_date.desc(), Transaction.id.desc())
+
+        all_txs = tx_query.all()
+        recent_with_items = [t for t in all_txs if t.items and len(t.items) > 0]
+
+        if not recent_with_items:
+            msg = (
+                f"🧾 *Cupons Fiscais & Itens ({ws.name})*\n\n"
+                f"📭 Nenhum cupom fiscal ou compra com itens detalhados foi encontrado neste perfil.\n\n"
+                f"💡 *Como cadastrar itens:*\n"
+                f"• Envie a foto ou PDF do cupom fiscal / nota fiscal\n"
+                f"• Ou envie por texto/áudio: `Gastei 150 no Angeloni: arroz 25, feijão 10, carne 80, café 35`\n"
+                f"• Os produtos ficam salvos e você poderá consultá-los a qualquer momento!"
+            )
+            await update.message.reply_text(msg, parse_mode="Markdown")
+            return
+
+        args = context.args or []
+        target_tx = None
+
+        if args:
+            search_term = " ".join(args).strip().lower()
+            if search_term.isdigit():
+                tx_id_arg = int(search_term)
+                target_tx = next((t for t in recent_with_items if t.id == tx_id_arg), None)
+
+            if not target_tx:
+                for t in recent_with_items:
+                    if search_term in (t.description or "").lower():
+                        target_tx = t
+                        break
+                    if any(search_term in (it.name or "").lower() for it in t.items):
+                        target_tx = t
+                        break
+
+        # Se não especificou ou não achou busca exata, usa o mais recente
+        if not target_tx:
+            target_tx = recent_with_items[0]
+
+        items = FinanceService.get_transaction_items(db, target_tx.id)
+
+        idx = recent_with_items.index(target_tx) if target_tx in recent_with_items else 0
+        prev_id = recent_with_items[idx + 1].id if idx + 1 < len(recent_with_items) else None
+        next_id = recent_with_items[idx - 1].id if idx > 0 else None
+
+        receipt_text = format_full_receipt_text(target_tx, items)
+        reply_markup = get_cupom_detail_keyboard(target_tx.id, prev_id=prev_id, next_id=next_id)
+
+        await update.message.reply_text(
+            receipt_text,
+            parse_mode="Markdown",
+            reply_markup=reply_markup
+        )
+    finally:
+        db.close()
+

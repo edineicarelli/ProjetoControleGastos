@@ -29,6 +29,19 @@ class ExtractedReminder(BaseModel):
     due_date: str = Field(..., description="Data de vencimento em formato YYYY-MM-DD ou DD/MM")
     recurrence: Literal["none", "monthly", "weekly", "yearly"] = Field("none", description="Recorrência da conta")
 
+class ExtractedReminderUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    title: str = Field(..., description="Nome ou termo de busca da conta/lembrete cujo vencimento ou valor será alterado (ex: 'Conta de Luz', 'Boleto Enel', 'Internet', 'Aluguel')")
+    new_due_date: Optional[str] = Field(None, description="Nova data de vencimento no formato YYYY-MM-DD ou DD/MM")
+    new_amount: Optional[float] = Field(None, description="Novo valor monetário da conta em reais se informado")
+
+class ExtractedTransactionUpdate(BaseModel):
+    model_config = ConfigDict(extra="ignore")
+    description_query: Optional[str] = Field(None, description="Termo de busca do lançamento a ser editado (ex: 'mercado', 'almoço', 'posto') ou 'ultimo' para o mais recente")
+    new_amount: Optional[float] = Field(None, description="Novo valor monetário do lançamento em reais se informado")
+    new_date: Optional[str] = Field(None, description="Nova data no formato YYYY-MM-DD ou DD/MM")
+    date_offset_days: Optional[int] = Field(None, description="Offset de dias se informado (0 para hoje, -1 para ontem, etc.)")
+
 class ExtractedGoalAction(BaseModel):
     model_config = ConfigDict(extra="ignore")
     action: Literal["deposit", "create", "check"] = Field(..., description="'deposit' para guardar/aportar valor, 'create' para nova meta, 'check' para ver progresso")
@@ -66,8 +79,10 @@ class AIParsedResult(BaseModel):
     model_config = ConfigDict(extra="forbid")
     intent: Literal[
         "transaction_record",      # Lançamento de despesa ou receita
+        "transaction_update",      # Alterar valor ou data de um lançamento efetivado existente
         "account_transfer",        # Transferência entre contas/bancos/carteira/dinheiro
         "reminder_create",         # Criar lembrete de conta a pagar/receber
+        "reminder_update",         # Alterar data de vencimento ou valor de conta/lembrete existente
         "goal_action",             # Ações com metas/caixinhas
         "vehicle_action",          # Registro de manutenção ou abastecimento
         "shopping_action",         # Adicionar ou gerenciar lista de compras
@@ -79,6 +94,8 @@ class AIParsedResult(BaseModel):
     transactions: List[ExtractedTransaction] = Field(default_factory=list, description="Lista de transações encontradas")
     transfer: Optional[ExtractedTransfer] = Field(None, description="Detalhes de transferência caso intent seja account_transfer")
     reminder: Optional[ExtractedReminder] = Field(None, description="Detalhes de lembrete caso intent seja reminder_create")
+    reminder_update: Optional[ExtractedReminderUpdate] = Field(None, description="Detalhes de alteração de vencimento ou valor de conta caso intent seja reminder_update")
+    transaction_update: Optional[ExtractedTransactionUpdate] = Field(None, description="Detalhes de alteração de lançamento efetivado caso intent seja transaction_update")
     goal: Optional[ExtractedGoalAction] = Field(None, description="Detalhes da meta caso intent seja goal_action")
     vehicle: Optional[ExtractedVehicleAction] = Field(None, description="Detalhes veiculares caso intent seja vehicle_action")
     shopping: Optional[ExtractedShoppingAction] = Field(None, description="Detalhes de compras caso intent seja shopping_action")

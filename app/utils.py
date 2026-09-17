@@ -1,3 +1,5 @@
+from typing import Any, List, Optional, Dict
+
 def format_currency_br(value: float | int | None, with_symbol: bool = True) -> str:
     """
     Formata valores numéricos para o padrão de moeda brasileiro (BRL / Real).
@@ -82,8 +84,67 @@ def format_items_list_text(items: list, max_items: int = 25) -> str:
         tot_str = f" → *{format_currency_br(tot_num)}*" if tot_num > 0 else ""
         lines.append(f"  *{idx}.* {name}{unit_str}{tot_str}")
 
-    if len(items) > max_items:
-        lines.append(f"  _... e mais {len(items) - max_items} itens na lista completa._")
+def format_full_receipt_text(tx: Any, items: list, max_items: int = 35) -> str:
+    """
+    Formata os detalhes completos de um cupom fiscal / transação com itens para exibição no Telegram.
+    """
+    cat_name = tx.category.name if getattr(tx, "category", None) else "Mercado"
+    acc_name = tx.account.name if getattr(tx, "account", None) else (getattr(tx, "payment_method", "Outro") or "Outro")
+    date_str = tx.transaction_date.strftime("%d/%m/%Y") if getattr(tx, "transaction_date", None) else ""
 
+    lines = [
+        f"🧾 *Cupom Fiscal - {tx.description}*",
+        f"💰 *Valor Total:* {format_currency_br(tx.amount)} | 📅 *Data:* {date_str}",
+        f"💳 *Conta/Pagamento:* {acc_name} | 🏷️ *Categoria:* {cat_name}",
+        "───────────────────"
+    ]
+
+    if not items:
+        lines.append("ℹ️ _Nenhum item individual discriminado para este lançamento._")
+        return "\n".join(lines)
+
+    for idx, it in enumerate(items[:max_items], 1):
+        name = getattr(it, "name", None) or (it.get("name") if isinstance(it, dict) else str(it))
+        quantity = getattr(it, "quantity", None) if getattr(it, "quantity", None) is not None else (it.get("quantity", 1.0) if isinstance(it, dict) else 1.0)
+        unit = getattr(it, "unit", None) or (it.get("unit", "un") if isinstance(it, dict) else "un")
+        unit_price = getattr(it, "unit_price", None) if getattr(it, "unit_price", None) is not None else (it.get("unit_price", 0.0) if isinstance(it, dict) else 0.0)
+        total_price = getattr(it, "total_price", None) if getattr(it, "total_price", None) is not None else (it.get("total_price", 0.0) if isinstance(it, dict) else 0.0)
+        cat = getattr(it, "category", None) or (it.get("category", "") if isinstance(it, dict) else "")
+
+        try:
+            qty_num = float(quantity) if quantity is not None else 1.0
+        except (ValueError, TypeError):
+            qty_num = 1.0
+
+        try:
+            up_num = float(unit_price) if unit_price is not None else 0.0
+        except (ValueError, TypeError):
+            up_num = 0.0
+
+        try:
+            tot_num = float(total_price) if total_price is not None else 0.0
+        except (ValueError, TypeError):
+            tot_num = 0.0
+
+        if tot_num <= 0 and up_num > 0:
+            tot_num = qty_num * up_num
+
+        if up_num > 0 and (qty_num != 1 or unit != "un"):
+            unit_str = f" ({qty_num:g} {unit} x {format_currency_br(up_num)})"
+        elif qty_num != 1 or unit != "un":
+            unit_str = f" ({qty_num:g} {unit})"
+        else:
+            unit_str = ""
+
+        tot_str = f" → *{format_currency_br(tot_num)}*" if tot_num > 0 else ""
+        cat_str = f" `[{cat}]`" if cat and cat not in ["Geral", "Outros", ""] else ""
+        lines.append(f"*{idx}.* {name}{unit_str}{tot_str}{cat_str}")
+
+    if len(items) > max_items:
+        lines.append(f"\n_... e mais {len(items) - max_items} itens na lista completa._")
+
+    lines.append("───────────────────")
+    lines.append(f"📊 *Total de Produtos:* {len(items)} itens discriminados")
     return "\n".join(lines)
+
 

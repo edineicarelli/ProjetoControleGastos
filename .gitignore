@@ -37,3 +37,4 @@ uploads/documents/*
 # Testing & logs
 .pytest_cache/
 *.log
+scratch/

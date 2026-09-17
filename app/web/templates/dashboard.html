@@ -1345,9 +1345,23 @@ body {
                                         <b style="display: block; font-size: 0.88rem;">{{ r.title }}</b>
                                         <small style="color: var(--text-secondary);">Vence: {{ r.due_date.strftime('%d/%m/%Y') }}</small>
                                     </div>
-                                    <span style="font-weight: 700; color: var(--expense);">
-                                        {{ r.amount | currency_br }}
-                                    </span>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <span style="font-weight: 700; color: var(--expense);">
+                                            {{ r.amount | currency_br }}
+                                        </span>
+                                        <button type="button" class="btn-action edit"
+                                            data-id="{{ r.id }}"
+                                            data-title="{{ r.title }}"
+                                            data-amount="{{ r.amount }}"
+                                            data-date="{{ r.due_date.strftime('%Y-%m-%d') }}"
+                                            data-type="{{ r.type }}"
+                                            data-recurrence="{{ r.recurrence }}"
+                                            data-hours="{{ r.reminder_hours_before or 24 }}"
+                                            onclick="handleEditReminderBtn(this)"
+                                            title="Alterar Vencimento e Dados" style="padding: 2px 6px; font-size: 0.8rem;">
+                                            ✏️
+                                        </button>
+                                    </div>
                                 </div>
                                 {% else %}
                                 <p style="color: var(--text-muted); font-size: 0.85rem; padding: 0.5rem 0;">Nenhuma conta a vencer nos próximos dias! 🎉</p>
@@ -1372,6 +1386,18 @@ body {
                                         <span style="font-weight: 700;" class="{% if tx.type == 'income' %}text-income{% else %}text-expense{% endif %}">
                                             {% if tx.type == 'income' %}+{% else %}-{% endif %}{{ tx.amount | currency_br }}
                                         </span>
+                                        <button type="button" class="btn-action edit" title="Editar lançamento"
+                                            data-id="{{ tx.id }}"
+                                            data-desc="{{ tx.description }}"
+                                            data-amount="{{ tx.amount }}"
+                                            data-date="{{ tx.transaction_date.strftime('%Y-%m-%d') }}"
+                                            data-type="{{ tx.type }}"
+                                            data-category="{{ tx.category.name if tx.category else 'Outros' }}"
+                                            data-account="{{ tx.account_id or '' }}"
+                                            data-payment="{{ tx.payment_method or '' }}"
+                                            onclick="handleEditTxBtn(this)">
+                                            ✏️
+                                        </button>
                                         <button class="btn-icon-danger" title="Excluir lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
                                             🗑️
                                         </button>
@@ -1431,6 +1457,9 @@ body {
                                 </div>
 
                                 <div class="account-footer-actions">
+                                    <button class="btn-action" onclick="filterByAccountFromAccountsTab({{ acc.id }})" title="Ver extrato e despesas desta conta" style="color: #38bdf8;">
+                                        📊 Extrato / Despesas
+                                    </button>
                                     <button class="btn-action" onclick="confirmZeroAccount({{ acc.id }}, '{{ acc.name|escape }}', {{ selected_year or 'null' }}, {{ selected_month or 'null' }})" title="Zerar movimentações e saldo no mês" style="color: #fbbf24;">
                                         🧹 Zerar Mês
                                     </button>
@@ -1461,16 +1490,79 @@ body {
 
                 <!-- TAB 3: LANÇAMENTOS & EXTRATO -->
                 <section id="tab-transactions" class="tab-content">
+                    <!-- RESUMO DE DESPESAS POR CONTA NO MÊS -->
+                    {% if expenses_by_account and expenses_by_account.accounts %}
+                    <div class="glass-card" style="margin-bottom: 1.25rem; padding: 1.15rem 1.35rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.85rem; flex-wrap: wrap; gap: 0.5rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem;">
+                                <span style="font-size: 1.2rem;">💳</span>
+                                <h3 style="font-size: 1rem; font-weight: 700; margin: 0; color: #fff;">Despesas do Mês por Conta Bancária</h3>
+                            </div>
+                            <span style="font-size: 0.82rem; color: var(--text-muted);">Clique em uma conta para filtrar o extrato abaixo</span>
+                        </div>
+                        <div class="expenses-by-account-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
+                            {% for acc_exp in expenses_by_account.accounts %}
+                            <div class="exp-acc-chip" onclick="quickFilterAccount('{{ acc_exp.account_id if acc_exp.account_id is not none else '' }}')" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 0.75rem; cursor: pointer; transition: all 0.2s ease; position: relative;" title="Filtrar lançamentos de {{ acc_exp.name }}">
+                                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
+                                    <span style="font-size: 0.85rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.35rem;">
+                                        {{ acc_exp.icon }} {{ acc_exp.name }}
+                                    </span>
+                                    <span class="status-badge" style="background: rgba(239, 68, 68, 0.15); color: #f87171; font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.4rem;">
+                                        {{ acc_exp.expense_percentage }}%
+                                    </span>
+                                </div>
+                                <div style="font-size: 1.05rem; font-weight: 700; color: var(--expense); margin-bottom: 0.25rem;">
+                                    {{ acc_exp.expense_total | currency_br }}
+                                </div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted); display: flex; justify-content: space-between;">
+                                    <span>Saldo: {{ acc_exp.current_balance | currency_br }}</span>
+                                    <span>{{ acc_exp.transaction_count }} lanç.</span>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+
                     <div class="glass-card">
-                        <div class="table-toolbar">
+                        <div class="table-toolbar" style="gap: 0.75rem; flex-wrap: wrap;">
                             <div>
                                 <h2 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">📑 Extrato: {{ summary.month_year_label }}</h2>
-                                <small style="color: var(--text-muted);">{{ all_transactions|length }} lançamentos registrados neste mês</small>
+                                <small id="txFilterCountLabel" style="color: var(--text-muted);">{{ all_transactions|length }} lançamentos registrados neste mês</small>
                             </div>
 
-                            <div style="display: flex; align-items: center; gap: 0.65rem; flex-wrap: wrap;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                <!-- Filtro de Tipo -->
+                                <select id="txFilterTypeSelect" onchange="filterTransactionsAdvanced()" class="form-control" style="max-width: 135px; padding: 0.4rem 0.65rem; font-size: 0.82rem; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.15); color: #fff;">
+                                    <option value="all">🔄 Todas</option>
+                                    <option value="expense">🔴 Só Despesas</option>
+                                    <option value="income">🟢 Só Receitas</option>
+                                </select>
+
+                                <!-- Filtro de Conta -->
+                                <select id="txFilterAccountSelect" onchange="filterTransactionsAdvanced()" class="form-control" style="max-width: 165px; padding: 0.4rem 0.65rem; font-size: 0.82rem; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.15); color: #fff;">
+                                    <option value="all">🏦 Todas as Contas</option>
+                                    {% for acc in accounts %}
+                                    <option value="{{ acc.id }}">{{ acc.icon }} {{ acc.name }}</option>
+                                    {% endfor %}
+                                </select>
+
+                                <!-- Filtro de Categoria -->
+                                <select id="txFilterCategorySelect" onchange="filterTransactionsAdvanced()" class="form-control" style="max-width: 155px; padding: 0.4rem 0.65rem; font-size: 0.82rem; background: rgba(0,0,0,0.3); border-color: rgba(255,255,255,0.15); color: #fff;">
+                                    <option value="all">🏷️ Todas Categorias</option>
+                                    {% for cat in categories %}
+                                    <option value="{{ cat.id }}">{{ cat.icon }} {{ cat.name }}</option>
+                                    {% endfor %}
+                                </select>
+
+                                <input type="text" id="txFilterInput" onkeyup="filterTransactionsAdvanced()" placeholder="🔍 Buscar..." class="form-control" style="max-width: 140px; padding: 0.4rem 0.75rem; font-size: 0.82rem;">
+
+                                <button class="btn btn-secondary btn-sm" onclick="resetTxFilters()" title="Limpar todos os filtros" style="padding: 0.4rem 0.65rem;">
+                                    🔄 Limpar
+                                </button>
+
                                 <button class="btn btn-primary btn-sm" onclick="openTransactionModal()" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
-                                    ➕ <span>Novo Gasto / Comprovante</span>
+                                    ➕ <span>Novo Gasto</span>
                                 </button>
 
                                 <button class="btn btn-secondary btn-sm" onclick="confirmZeroMonth({{ current_workspace.id }}, '{{ summary.month_year_label }}', {{ selected_year or 'null' }}, {{ selected_month or 'null' }})" style="color: #fbbf24; border-color: rgba(245, 158, 11, 0.35);" title="Zerar todos os lançamentos deste mês">
@@ -1480,8 +1572,6 @@ body {
                                 <button class="btn btn-secondary btn-sm" onclick="openTransferModal()">
                                     🔄 <span>Transferência</span>
                                 </button>
-
-                                <input type="text" id="txFilterInput" onkeyup="filterTransactionsTable(this.value)" placeholder="🔍 Buscar lançamento..." class="form-control" style="max-width: 200px; padding: 0.4rem 0.75rem; font-size: 0.82rem;">
                                 
                                 <div id="batchActionToolbar" class="batch-toolbar" style="display: none;">
                                     <span><b id="selectedCount">0</b> selecionados</span>
@@ -1511,7 +1601,11 @@ body {
                                 <tbody>
                                     {% if all_transactions %}
                                         {% for tx in all_transactions %}
-                                        <tr id="tx-row-{{ tx.id }}" class="tx-row-item">
+                                        <tr id="tx-row-{{ tx.id }}" class="tx-row-item"
+                                            data-type="{{ tx.type }}"
+                                            data-account-id="{{ tx.account_id or '' }}"
+                                            data-category-id="{{ tx.category_id or '' }}"
+                                            data-amount="{{ tx.amount }}">
                                             <td style="text-align: center;">
                                                 <input type="checkbox" class="tx-checkbox" value="{{ tx.id }}" onchange="updateSelectedTxCount()" style="cursor: pointer; width: 16px; height: 16px;">
                                             </td>
@@ -1553,9 +1647,23 @@ body {
                                                 {{ tx.amount | currency_br }}
                                             </td>
                                             <td style="text-align: center;">
-                                                <button class="btn-icon-danger" title="Excluir lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
-                                                    🗑️
-                                                </button>
+                                                <div style="display: inline-flex; align-items: center; gap: 0.35rem;">
+                                                    <button type="button" class="btn-action edit" title="Editar lançamento e data de vencimento"
+                                                        data-id="{{ tx.id }}"
+                                                        data-desc="{{ tx.description }}"
+                                                        data-amount="{{ tx.amount }}"
+                                                        data-date="{{ tx.transaction_date.strftime('%Y-%m-%d') }}"
+                                                        data-type="{{ tx.type }}"
+                                                        data-category="{{ tx.category.name if tx.category else 'Outros' }}"
+                                                        data-account="{{ tx.account_id or '' }}"
+                                                        data-payment="{{ tx.payment_method or '' }}"
+                                                        onclick="handleEditTxBtn(this)">
+                                                        ✏️
+                                                    </button>
+                                                    <button class="btn-icon-danger" title="Excluir lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
+                                                        🗑️
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                         {% endfor %}
@@ -1620,9 +1728,14 @@ body {
                 <!-- TAB 5: CONTAS & VENCIMENTOS -->
                 <section id="tab-reminders" class="tab-content">
                     <div class="glass-card">
-                        <div style="margin-bottom: 1.25rem;">
-                            <h2 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">⏰ Contas e Vencimentos Pendentes</h2>
-                            <small style="color: var(--text-muted);">Avisos automáticos de contas a pagar e a receber</small>
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.25rem; flex-wrap: wrap; gap: 0.75rem;">
+                            <div>
+                                <h2 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">⏰ Contas e Vencimentos Pendentes</h2>
+                                <small style="color: var(--text-muted);">Avisos automáticos de contas a pagar e a receber</small>
+                            </div>
+                            <button class="btn btn-primary btn-sm" onclick="openCreateReminderModal()" style="display: inline-flex; align-items: center; gap: 0.35rem; font-weight: 600;">
+                                ➕ Nova Conta / Lembrete
+                            </button>
                         </div>
 
                         {% if reminders %}
@@ -1631,12 +1744,24 @@ body {
                                 <div class="overview-item" style="padding: 0.85rem 1rem;">
                                     <div>
                                         <strong style="display: block; font-size: 0.95rem; color: #fff;">{{ r.title }}</strong>
-                                        <small style="color: var(--text-secondary);">Vencimento: {{ r.due_date.strftime('%d/%m/%Y') }} • {{ '🔴 A Pagar' if r.type == 'to_pay' else '🟢 A Receber' }}</small>
+                                        <small style="color: var(--text-secondary);">Vencimento: {{ r.due_date.strftime('%d/%m/%Y') }} • {{ '🔴 A Pagar' if r.type == 'to_pay' else '🟢 A Receber' }}{% if r.recurrence != 'none' %} • 🔄 Recorrente ({{ r.recurrence }}){% endif %}</small>
                                     </div>
-                                    <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                        <span style="font-weight: 700; font-size: 1.05rem;">{{ r.amount | currency_br }}</span>
+                                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                                        <span style="font-weight: 700; font-size: 1.05rem; margin-right: 0.25rem;">{{ r.amount | currency_br }}</span>
                                         <button class="btn btn-primary btn-sm" onclick="markReminderPaid({{ r.id }})">
                                             ✅ Pagar
+                                        </button>
+                                        <button class="btn btn-secondary btn-sm"
+                                            data-id="{{ r.id }}"
+                                            data-title="{{ r.title }}"
+                                            data-amount="{{ r.amount }}"
+                                            data-date="{{ r.due_date.strftime('%Y-%m-%d') }}"
+                                            data-type="{{ r.type }}"
+                                            data-recurrence="{{ r.recurrence }}"
+                                            data-hours="{{ r.reminder_hours_before or 24 }}"
+                                            onclick="handleEditReminderBtn(this)"
+                                            title="Alterar data de vencimento e dados">
+                                            ✏️ Editar
                                         </button>
                                         <button class="btn-icon-danger" title="Excluir lembrete" onclick="deleteReminder({{ r.id }}, '{{ r.title|replace("'", "\\'") }}')">
                                             🗑️
@@ -3136,6 +3261,213 @@ body {
         </div>
     </div>
 
+    <!-- MODAL: Alterar Vencimento / Editar Lembrete -->
+    <div id="editReminderModal" class="modal-backdrop" onclick="if(event.target === this) closeEditReminderModal()">
+        <div class="modal-card" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3 class="modal-title">⏰ Alterar Data de Vencimento</h3>
+                <button type="button" class="modal-close" onclick="closeEditReminderModal()">&times;</button>
+            </div>
+            <form id="editReminderForm" onsubmit="saveEditReminder(event)" class="modal-body" style="display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem;">
+                <input type="hidden" id="editReminderId">
+
+                <div class="form-group">
+                    <label for="editReminderTitle" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Nome da Conta / Título *</label>
+                    <input type="text" id="editReminderTitle" class="form-control" required placeholder="Ex: Conta de Luz, Fatura Cartão">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="editReminderDueDate" style="font-weight: 700; color: #6366f1; display: block; margin-bottom: 0.35rem;">📅 Data de Vencimento *</label>
+                        <input type="date" id="editReminderDueDate" class="form-control" required style="border: 1px solid #6366f1; background: rgba(99, 102, 241, 0.08); font-weight: 600; color: #fff;">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editReminderAmount" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Valor (R$) *</label>
+                        <input type="number" step="0.01" id="editReminderAmount" class="form-control" required placeholder="0.00">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="editReminderType" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Tipo</label>
+                        <select id="editReminderType" class="form-control">
+                            <option value="to_pay">🔴 A Pagar (Despesa)</option>
+                            <option value="to_receive">🟢 A Receber (Receita)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editReminderRecurrence" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Recorrência</label>
+                        <select id="editReminderRecurrence" class="form-control">
+                            <option value="none">Única (Não repete)</option>
+                            <option value="monthly">Mensal (Todo mês)</option>
+                            <option value="weekly">Semanal</option>
+                            <option value="yearly">Anual</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="editReminderHours" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Aviso Automático no Telegram</label>
+                    <select id="editReminderHours" class="form-control">
+                        <option value="1">1 hora antes do vencimento</option>
+                        <option value="2">2 horas antes</option>
+                        <option value="12">12 horas antes</option>
+                        <option value="24" selected>24 horas antes (1 dia)</option>
+                        <option value="48">48 horas antes (2 dias)</option>
+                    </select>
+                </div>
+
+                <div class="modal-footer" style="padding: 0; margin-top: 0.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditReminderModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" style="font-weight: 700;">💾 Salvar Alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Nova Conta / Lembrete -->
+    <div id="createReminderModal" class="modal-backdrop" onclick="if(event.target === this) closeCreateReminderModal()">
+        <div class="modal-card" style="max-width: 540px;">
+            <div class="modal-header">
+                <h3 class="modal-title">➕ Nova Conta a Pagar / Lembrete</h3>
+                <button type="button" class="modal-close" onclick="closeCreateReminderModal()">&times;</button>
+            </div>
+            <form id="createReminderForm" onsubmit="saveCreateReminder(event)" class="modal-body" style="display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem;">
+                <input type="hidden" id="newReminderWorkspaceId" value="{{ current_workspace.id }}">
+
+                <div class="form-group">
+                    <label for="newReminderTitle" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Nome da Conta / Descrição *</label>
+                    <input type="text" id="newReminderTitle" class="form-control" required placeholder="Ex: Conta de Internet, Aluguel">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="newReminderDueDate" style="font-weight: 700; color: #6366f1; display: block; margin-bottom: 0.35rem;">📅 Data de Vencimento *</label>
+                        <input type="date" id="newReminderDueDate" class="form-control" required style="border: 1px solid #6366f1; background: rgba(99, 102, 241, 0.08); font-weight: 600; color: #fff;">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="newReminderAmount" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Valor (R$) *</label>
+                        <input type="number" step="0.01" id="newReminderAmount" class="form-control" required placeholder="0.00">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="newReminderType" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Tipo</label>
+                        <select id="newReminderType" class="form-control">
+                            <option value="to_pay" selected>🔴 A Pagar (Despesa)</option>
+                            <option value="to_receive">🟢 A Receber (Receita)</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="newReminderRecurrence" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Recorrência</label>
+                        <select id="newReminderRecurrence" class="form-control">
+                            <option value="none" selected>Única (Não repete)</option>
+                            <option value="monthly">Mensal (Todo mês)</option>
+                            <option value="weekly">Semanal</option>
+                            <option value="yearly">Anual</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label for="newReminderHours" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Aviso Automático no Telegram</label>
+                    <select id="newReminderHours" class="form-control">
+                        <option value="1">1 hora antes do vencimento</option>
+                        <option value="2">2 horas antes</option>
+                        <option value="12">12 horas antes</option>
+                        <option value="24" selected>24 horas antes (1 dia)</option>
+                        <option value="48">48 horas antes (2 dias)</option>
+                    </select>
+                </div>
+
+                <div class="modal-footer" style="padding: 0; margin-top: 0.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeCreateReminderModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" style="font-weight: 700;">➕ Cadastrar Conta</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: Editar Lançamento & Data -->
+    <div id="editTransactionModal" class="modal-backdrop" onclick="if(event.target === this) closeEditTransactionModal()">
+        <div class="modal-card" style="max-width: 580px;">
+            <div class="modal-header">
+                <h3 class="modal-title">✏️ Editar Lançamento</h3>
+                <button type="button" class="modal-close" onclick="closeEditTransactionModal()">&times;</button>
+            </div>
+            <form id="editTransactionForm" onsubmit="saveEditTransaction(event)" class="modal-body" style="display: flex; flex-direction: column; gap: 1rem; padding: 1.25rem;">
+                <input type="hidden" id="editTxId">
+
+                <div class="form-group">
+                    <label for="editTxDesc" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Descrição *</label>
+                    <input type="text" id="editTxDesc" class="form-control" required placeholder="Ex: Supermercado, Almoço">
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="editTxDate" style="font-weight: 700; color: #6366f1; display: block; margin-bottom: 0.35rem;">📅 Data do Lançamento / Vencimento *</label>
+                        <input type="date" id="editTxDate" class="form-control" required style="border: 1px solid #6366f1; background: rgba(99, 102, 241, 0.08); font-weight: 600; color: #fff;">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editTxAmount" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Valor (R$) *</label>
+                        <input type="number" step="0.01" id="editTxAmount" class="form-control" required placeholder="0.00">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="editTxType" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Tipo</label>
+                        <select id="editTxType" class="form-control">
+                            <option value="expense">🔴 Despesa / Saída</option>
+                            <option value="income">🟢 Receita / Entrada</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editTxCategory" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Categoria</label>
+                        <input type="text" id="editTxCategory" class="form-control" placeholder="Ex: Alimentação, Moradia">
+                    </div>
+                </div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label for="editTxAccount" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Conta Bancária / Origem</label>
+                        <select id="editTxAccount" class="form-control">
+                            <option value="">(Nenhuma conta vinculada)</option>
+                            {% for acc in accounts %}
+                            <option value="{{ acc.id }}">{{ acc.icon }} {{ acc.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="editTxPaymentMethod" style="font-weight: 600; color: #fff; display: block; margin-bottom: 0.35rem;">Forma de Pagamento</label>
+                        <select id="editTxPaymentMethod" class="form-control">
+                            <option value="Pix">Pix</option>
+                            <option value="Cartão de Crédito">Cartão de Crédito</option>
+                            <option value="Cartão de Débito">Cartão de Débito</option>
+                            <option value="Dinheiro">Dinheiro</option>
+                            <option value="Boleto">Boleto</option>
+                            <option value="Transferência">Transferência</option>
+                            <option value="Outro">Outro</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="modal-footer" style="padding: 0; margin-top: 0.5rem;">
+                    <button type="button" class="btn btn-secondary" onclick="closeEditTransactionModal()">Cancelar</button>
+                    <button type="submit" class="btn btn-primary" style="font-weight: 700;">💾 Salvar Alterações</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Passing server data to Chart.js safely -->
     <script>
         window.currentWorkspaceId = {{ current_workspace.id }};
@@ -3163,61 +3495,7 @@ body {
             window.Telegram.WebApp.ready();
             window.Telegram.WebApp.expand();
         }
-
-        // Direct Item Modal helper guarantee
-        window.openTransactionItemsModal = window.openTransactionItemsModal || async function(transactionId) {
-            const modal = document.getElementById('transactionItemsModal');
-            if (!modal) return;
-            modal.style.display = 'flex';
-            modal.classList.add('show', 'active');
-            document.body.style.overflow = 'hidden';
-            
-            const tbody = document.getElementById('txItemsViewTableBody');
-            if (tbody) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">Carregando itens...</td></tr>';
-            }
-            try {
-                const res = await fetch(`/api/transactions/${transactionId}/items`);
-                const data = await res.json();
-                document.getElementById('txItemsModalTitle').textContent = `🛒 ${data.description || 'Itens da Compra'}`;
-                document.getElementById('txItemsModalSubtitle').textContent = `Lançamento #${data.transaction_id} • ${data.date}`;
-                document.getElementById('txItemsModalAmount').textContent = Number(data.amount).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-                document.getElementById('txItemsModalCategory').textContent = data.category || 'Geral';
-                document.getElementById('txItemsModalDate').textContent = data.date;
-                
-                if (tbody) {
-                    if (!data.items || data.items.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: var(--text-muted);">Nenhum item discriminado.</td></tr>';
-                    } else {
-                        tbody.innerHTML = data.items.map(it => `
-                            <tr>
-                                <td style="font-weight: 600; color: #fff;">${it.name}</td>
-                                <td><span class="category-tag">${it.category || 'Geral'}</span></td>
-                                <td style="text-align: center;">${it.quantity} ${it.unit}</td>
-                                <td style="text-align: right; color: var(--text-secondary);">${Number(it.unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                                <td style="text-align: right; font-weight: 700; color: #fff;">${Number(it.total_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-                            </tr>
-                        `).join('');
-                    }
-                }
-                const sum = (data.items || []).reduce((acc, it) => acc + (it.total_price || 0), 0);
-                document.getElementById('txItemsViewCount').textContent = `Total de produtos: ${(data.items || []).length}`;
-                document.getElementById('txItemsViewTotal').textContent = `Soma dos Itens: ${sum.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`;
-            } catch(e) {
-                console.error(e);
-                if (tbody) tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 2rem; color: #fb7185;">Erro ao carregar itens.</td></tr>';
-            }
-        };
-
-        window.closeTransactionItemsModal = window.closeTransactionItemsModal || function() {
-            const modal = document.getElementById('transactionItemsModal');
-            if (modal) {
-                modal.style.display = 'none';
-                modal.classList.remove('show', 'active');
-                document.body.style.overflow = '';
-            }
-        };
     </script>
-    <script src="/static/js/dashboard.js?v=2.8"></script>
+    <script src="/static/js/dashboard.js?v=3.2"></script>
 </body>
 </html>

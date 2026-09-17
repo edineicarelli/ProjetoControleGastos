@@ -3165,6 +3165,408 @@ window.lookupLastPrice = lookupLastPrice;
 window.handleAddShoppingItem = handleAddShoppingItem;
 window.deleteShoppingItem = deleteShoppingItem;
 
+/* ========================================================
+   GESTÃO E ALTERAÇÃO DE VENCIMENTOS (LEMBRETES / CONTAS)
+   ======================================================== */
+function openEditReminderModal(id, title, amount, dueDate, type = 'to_pay', recurrence = 'none', reminderHours = 24) {
+    const modal = document.getElementById('editReminderModal');
+    if (!modal) return;
+
+    const idField = document.getElementById('editReminderId') || document.getElementById('editRemId');
+    if (idField) idField.value = id || '';
+
+    const titleField = document.getElementById('editReminderTitle') || document.getElementById('editRemTitle');
+    if (titleField) titleField.value = title || '';
+
+    const amountField = document.getElementById('editReminderAmount') || document.getElementById('editRemAmount');
+    if (amountField) amountField.value = (amount !== undefined && amount !== null) ? amount : '';
+
+    const dueDateField = document.getElementById('editReminderDueDate') || document.getElementById('editRemDueDate');
+    if (dueDateField) dueDateField.value = dueDate || '';
+
+    const typeField = document.getElementById('editReminderType') || document.getElementById('editRemType');
+    if (typeField) typeField.value = type || 'to_pay';
+
+    const recurrenceField = document.getElementById('editReminderRecurrence') || document.getElementById('editRemRecurrence');
+    if (recurrenceField) recurrenceField.value = recurrence || 'none';
+
+    const hoursField = document.getElementById('editReminderHours') || document.getElementById('editRemHours');
+    if (hoursField) hoursField.value = reminderHours || 24;
+
+    modal.style.display = 'flex';
+    modal.classList.add('show', 'active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeEditReminderModal() {
+    const modal = document.getElementById('editReminderModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('show', 'active');
+        document.body.style.overflow = '';
+    }
+}
+
+async function saveEditReminder(event) {
+    if (event) event.preventDefault();
+    const id = (document.getElementById('editReminderId') || document.getElementById('editRemId'))?.value;
+    const title = (document.getElementById('editReminderTitle') || document.getElementById('editRemTitle'))?.value?.trim() || '';
+    const dueDate = (document.getElementById('editReminderDueDate') || document.getElementById('editRemDueDate'))?.value || '';
+    const amountVal = (document.getElementById('editReminderAmount') || document.getElementById('editRemAmount'))?.value;
+    const amount = parseFloat(amountVal) || 0.0;
+    const type = (document.getElementById('editReminderType') || document.getElementById('editRemType'))?.value || 'to_pay';
+    const recurrence = (document.getElementById('editReminderRecurrence') || document.getElementById('editRemRecurrence'))?.value || 'none';
+    const hoursVal = (document.getElementById('editReminderHours') || document.getElementById('editRemHours'))?.value;
+    const reminderHours = parseInt(hoursVal) || 24;
+
+    if (!title || !dueDate) {
+        alert('Por favor, informe o título e a data de vencimento.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/reminders/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title: title,
+                due_date: dueDate,
+                amount: amount,
+                type: type,
+                recurrence: recurrence,
+                reminder_hours_before: reminderHours
+            })
+        });
+
+        if (res.ok) {
+            localStorage.setItem('active_dashboard_tab', 'tab-reminders');
+            window.location.reload();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            alert(data.detail || 'Erro ao salvar alterações do vencimento.');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Erro ao se comunicar com o servidor.');
+    }
+}
+
+function openCreateReminderModal() {
+    const modal = document.getElementById('createReminderModal');
+    if (!modal) return;
+
+    document.getElementById('newReminderTitle').value = '';
+    const today = new Date();
+    today.setDate(today.getDate() + 5);
+    const defaultDate = today.toISOString().split('T')[0];
+    document.getElementById('newReminderDueDate').value = defaultDate;
+    document.getElementById('newReminderAmount').value = '';
+    document.getElementById('newReminderType').value = 'to_pay';
+    document.getElementById('newReminderRecurrence').value = 'none';
+    document.getElementById('newReminderHours').value = '24';
+
+    modal.style.display = 'flex';
+    modal.classList.add('show');
+}
+
+function closeCreateReminderModal() {
+    const modal = document.getElementById('createReminderModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('show');
+    }
+}
+
+async function saveCreateReminder(event) {
+    event.preventDefault();
+    const wsId = document.getElementById('newReminderWorkspaceId')?.value || window.currentWorkspaceId;
+    const title = document.getElementById('newReminderTitle').value.trim();
+    const dueDate = document.getElementById('newReminderDueDate').value;
+    const amount = parseFloat(document.getElementById('newReminderAmount').value) || 0.0;
+    const type = document.getElementById('newReminderType').value;
+    const recurrence = document.getElementById('newReminderRecurrence').value;
+    const reminderHours = parseInt(document.getElementById('newReminderHours').value) || 24;
+
+    if (!title || !dueDate) {
+        alert('Preencha o título e a data de vencimento.');
+        return;
+    }
+
+    try {
+        const res = await fetch('/api/reminders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                workspace_id: parseInt(wsId),
+                title: title,
+                due_date: dueDate,
+                amount: amount,
+                type: type,
+                recurrence: recurrence,
+                reminder_hours_before: reminderHours
+            })
+        });
+
+        if (res.ok) {
+            localStorage.setItem('active_dashboard_tab', 'tab-reminders');
+            window.location.reload();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            alert(data.detail || 'Erro ao cadastrar nova conta.');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Erro ao se comunicar com o servidor.');
+    }
+}
+
+/* ========================================================
+   EDIÇÃO DE LANÇAMENTOS E DATAS NO EXTRATO
+   ======================================================== */
+function handleEditTxBtn(btn) {
+    if (!btn || !btn.dataset) return;
+    const d = btn.dataset;
+    openEditTransactionModal(
+        d.id,
+        d.desc,
+        parseFloat(d.amount) || 0.0,
+        d.date,
+        d.type,
+        d.category,
+        d.account ? parseInt(d.account) : null,
+        d.payment
+    );
+}
+
+function handleEditReminderBtn(btn) {
+    if (!btn || !btn.dataset) return;
+    const d = btn.dataset;
+    openEditReminderModal(
+        d.id,
+        d.title,
+        parseFloat(d.amount) || 0.0,
+        d.date,
+        d.type,
+        d.recurrence,
+        parseInt(d.hours) || 24
+    );
+}
+
+function openEditTransactionModal(id, desc, amount, txDate, type, categoryName, accountId, paymentMethod) {
+    const modal = document.getElementById('editTransactionModal');
+    if (!modal) return;
+
+    document.getElementById('editTxId').value = id || '';
+    document.getElementById('editTxDesc').value = desc || '';
+    document.getElementById('editTxAmount').value = (amount !== undefined && amount !== null) ? amount : '';
+    document.getElementById('editTxDate').value = txDate || '';
+    document.getElementById('editTxType').value = type || 'expense';
+    document.getElementById('editTxCategory').value = categoryName || 'Outros';
+    document.getElementById('editTxAccount').value = accountId || '';
+    document.getElementById('editTxPaymentMethod').value = paymentMethod || 'Pix';
+
+    modal.style.display = 'flex';
+    modal.classList.add('show', 'active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeEditTransactionModal() {
+    const modal = document.getElementById('editTransactionModal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.classList.remove('show', 'active');
+        document.body.style.overflow = '';
+    }
+}
+
+async function saveEditTransaction(event) {
+    event.preventDefault();
+    const id = document.getElementById('editTxId').value;
+    const desc = document.getElementById('editTxDesc').value.trim();
+    const txDate = document.getElementById('editTxDate').value;
+    const amount = parseFloat(document.getElementById('editTxAmount').value) || 0.0;
+    const type = document.getElementById('editTxType').value;
+    const categoryName = document.getElementById('editTxCategory').value.trim();
+    const accIdVal = document.getElementById('editTxAccount').value;
+    const accountId = accIdVal ? parseInt(accIdVal) : null;
+    const paymentMethod = document.getElementById('editTxPaymentMethod').value;
+
+    if (!desc || !txDate) {
+        alert('Preencha a descrição e a data do lançamento.');
+        return;
+    }
+
+    try {
+        const res = await fetch(`/api/transactions/${id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                description: desc,
+                transaction_date: txDate,
+                amount: amount,
+                type: type,
+                category_name: categoryName,
+                account_id: accountId,
+                payment_method: paymentMethod
+            })
+        });
+
+        if (res.ok) {
+            localStorage.setItem('active_dashboard_tab', 'tab-transactions');
+            window.location.reload();
+        } else {
+            const data = await res.json().catch(() => ({}));
+            alert(data.detail || 'Erro ao salvar alterações do lançamento.');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('Erro ao se comunicar com o servidor.');
+    }
+}
+
+// Window bindings
+window.handleEditTxBtn = handleEditTxBtn;
+window.handleEditReminderBtn = handleEditReminderBtn;
+window.openEditReminderModal = openEditReminderModal;
+window.closeEditReminderModal = closeEditReminderModal;
+window.saveEditReminder = saveEditReminder;
+window.openCreateReminderModal = openCreateReminderModal;
+window.closeCreateReminderModal = closeCreateReminderModal;
+window.saveCreateReminder = saveCreateReminder;
+window.openEditTransactionModal = openEditTransactionModal;
+window.closeEditTransactionModal = closeEditTransactionModal;
+window.saveEditTransaction = saveEditTransaction;
+window.closeAccountModal = closeAccountModal;
+window.closeTransferModal = closeTransferModal;
+window.closeWorkspaceSettingsModal = closeWorkspaceSettingsModal;
+window.closeTransactionModal = closeTransactionModal;
+window.closeTransactionItemsModal = closeTransactionItemsModal;
+window.closeReportExportModal = closeReportExportModal;
+
+/* ========================================================
+   GLOBAL MODAL HELPERS (INSTANT CLOSE & KEYBOARD SHORTCUTS)
+   ======================================================== */
+function closeAllModals() {
+    const modals = document.querySelectorAll('.modal-backdrop, .modal-overlay');
+    modals.forEach(modal => {
+        modal.style.display = 'none';
+        modal.classList.remove('show', 'active');
+    });
+    document.body.style.overflow = '';
+}
+window.closeAllModals = closeAllModals;
+
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        closeAllModals();
+    }
+});
+
+document.addEventListener('click', (e) => {
+    if (e.target && e.target.classList && e.target.classList.contains('modal-backdrop')) {
+        e.target.style.display = 'none';
+        e.target.classList.remove('show', 'active');
+        document.body.style.overflow = '';
+    }
+});
+
+/* ========================================================
+   FILTRAGEM AVANÇADA DE LANÇAMENTOS / EXTRATO
+   ======================================================== */
+function filterTransactionsAdvanced() {
+    const typeSelect = document.getElementById('txFilterTypeSelect');
+    const accSelect = document.getElementById('txFilterAccountSelect');
+    const catSelect = document.getElementById('txFilterCategorySelect');
+    const inputSearch = document.getElementById('txFilterInput');
+    const countLabel = document.getElementById('txFilterCountLabel');
+
+    const typeFilter = typeSelect ? typeSelect.value : 'all';
+    const accFilter = accSelect ? accSelect.value : 'all';
+    const catFilter = catSelect ? catSelect.value : 'all';
+    const q = (inputSearch ? inputSearch.value : '').toLowerCase().trim();
+
+    const rows = document.querySelectorAll('.tx-row-item');
+    let visibleCount = 0;
+    let visibleExpenses = 0;
+    let visibleIncome = 0;
+
+    rows.forEach(row => {
+        const rowType = row.getAttribute('data-type') || '';
+        const rowAcc = row.getAttribute('data-account-id') || '';
+        const rowCat = row.getAttribute('data-category-id') || '';
+        const rowText = row.textContent.toLowerCase();
+
+        let show = true;
+        if (typeFilter !== 'all' && rowType !== typeFilter) show = false;
+        if (accFilter !== 'all' && rowAcc !== accFilter) show = false;
+        if (catFilter !== 'all' && rowCat !== catFilter) show = false;
+        if (q && !rowText.includes(q)) show = false;
+
+        row.style.display = show ? '' : 'none';
+        if (show) {
+            visibleCount++;
+            const amount = parseFloat(row.getAttribute('data-amount') || '0');
+            if (rowType === 'income') {
+                visibleIncome += amount;
+            } else {
+                visibleExpenses += amount;
+            }
+        }
+    });
+
+    if (countLabel) {
+        if (typeFilter === 'all' && accFilter === 'all' && catFilter === 'all' && !q) {
+            countLabel.textContent = `${rows.length} lançamentos registrados neste mês`;
+        } else {
+            const expFormatted = visibleExpenses.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            const incFormatted = visibleIncome.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+            countLabel.innerHTML = `<span style="color: var(--primary-light); font-weight: 600;">${visibleCount} de ${rows.length} exibidos</span> (Despesas: <span style="color: var(--expense);">${expFormatted}</span> | Receitas: <span style="color: var(--income);">${incFormatted}</span>)`;
+        }
+    }
+}
+
+function quickFilterAccount(accId) {
+    const accSelect = document.getElementById('txFilterAccountSelect');
+    if (accSelect) {
+        accSelect.value = accId ? String(accId) : 'all';
+        filterTransactionsAdvanced();
+        
+        // Rolagem suave até a tabela
+        const tableToolbar = document.querySelector('#tab-transactions .table-toolbar');
+        if (tableToolbar) {
+            tableToolbar.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+}
+
+function resetTxFilters() {
+    const typeSelect = document.getElementById('txFilterTypeSelect');
+    const accSelect = document.getElementById('txFilterAccountSelect');
+    const catSelect = document.getElementById('txFilterCategorySelect');
+    const inputSearch = document.getElementById('txFilterInput');
+
+    if (typeSelect) typeSelect.value = 'all';
+    if (accSelect) accSelect.value = 'all';
+    if (catSelect) catSelect.value = 'all';
+    if (inputSearch) inputSearch.value = '';
+
+    filterTransactionsAdvanced();
+}
+
+function filterByAccountFromAccountsTab(accId) {
+    switchTab('tab-transactions');
+    setTimeout(() => {
+        quickFilterAccount(accId);
+    }, 150);
+}
+
+window.filterTransactionsAdvanced = filterTransactionsAdvanced;
+window.quickFilterAccount = quickFilterAccount;
+window.resetTxFilters = resetTxFilters;
+window.filterByAccountFromAccountsTab = filterByAccountFromAccountsTab;
+
+
+
 
 
 

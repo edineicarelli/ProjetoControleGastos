@@ -382,15 +382,12 @@ class FinanceService:
                 )
                 db.add(tx_item)
 
-        # Atualiza saldo da conta se vinculada
-        if acc:
-            if type == "income":
-                acc.current_balance += abs(amount)
-            else:
-                acc.current_balance -= abs(amount)
-
         db.commit()
         db.refresh(tx)
+
+        # Atualiza saldo exato da conta se vinculada
+        if tx.account_id:
+            AccountService.recalculate_account_balance(db, tx.account_id)
 
         # Notifica tempo real
         try:
@@ -549,6 +546,148 @@ class FinanceService:
         }
 
     @staticmethod
+    def get_expenses_by_account_summary(
+        db: Session,
+        workspace_id: int,
+        year: Optional[int] = None,
+        month: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Calcula as despesas e receitas do mês agrupadas por conta bancária / carteira"""
+        from app.models import Account, Transaction
+        from app.services.account_service import AccountService
+        now = datetime.datetime.now()
+        target_year = int(year) if year else now.year
+        target_month = int(month) if month else now.month
+
+        accounts = AccountService.get_accounts(db, workspace_id)
+        
+        txs = db.query(Transaction).filter(
+            Transaction.workspace_id == workspace_id,
+            extract('year', Transaction.transaction_date) == target_year,
+            extract('month', Transaction.transaction_date) == target_month
+        ).all()
+
+        total_expense = sum(t.amount for t in txs if t.type == "expense")
+        total_income = sum(t.amount for t in txs if t.type == "income")
+
+        account_breakdown = []
+        for acc in accounts:
+            acc_txs = [t for t in txs if t.account_id == acc.id]
+            acc_exp = sum(t.amount for t in acc_txs if t.type == "expense")
+            acc_inc = sum(t.amount for t in acc_txs if t.type == "income")
+            pct = (acc_exp / total_expense * 100) if total_expense > 0 else 0.0
+
+            account_breakdown.append({
+                "account_id": acc.id,
+                "name": acc.name,
+                "icon": acc.icon,
+                "color": acc.color,
+                "current_balance": acc.current_balance,
+                "expense_total": acc_exp,
+                "income_total": acc_inc,
+                "net_total": acc_inc - acc_exp,
+                "expense_percentage": round(pct, 1),
+                "transaction_count": len(acc_txs)
+            })
+
+        unassigned_txs = [t for t in txs if t.account_id is None]
+        if unassigned_txs:
+            un_exp = sum(t.amount for t in unassigned_txs if t.type == "expense")
+            un_inc = sum(t.amount for t in unassigned_txs if t.type == "income")
+            pct = (un_exp / total_expense * 100) if total_expense > 0 else 0.0
+            account_breakdown.append({
+                "account_id": None,
+                "name": "Outros / Não Vinculado",
+                "icon": "🏷️",
+                "color": "#94a3b8",
+                "current_balance": 0.0,
+                "expense_total": un_exp,
+                "income_total": un_inc,
+                "net_total": un_inc - un_exp,
+                "expense_percentage": round(pct, 1),
+                "transaction_count": len(unassigned_txs)
+            })
+
+        sorted_accounts = sorted(account_breakdown, key=lambda x: x["expense_total"], reverse=True)
+
+        return {
+            "year": target_year,
+            "month": target_month,
+            "total_expense": total_expense,
+            "total_income": total_income,
+            "net_balance": total_income - total_expense,
+            "accounts": sorted_accounts,
+            "total_transactions": len(txs)
+        }
+
+    @staticmethod
+    def get_filtered_transactions(
+        db: Session,
+        workspace_id: int,
+        tx_type: Optional[str] = None,
+        account_id: Optional[int] = None,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        limit: int = 10
+    ) -> List[Transaction]:
+        """Filtra transações com base no tipo (income/expense/None), conta bancária e mês"""
+        from app.models import Transaction
+        query = db.query(Transaction).filter(Transaction.workspace_id == workspace_id)
+
+        if tx_type and tx_type in ["income", "expense"]:
+            query = query.filter(Transaction.type == tx_type)
+
+        if account_id is not None:
+            query = query.filter(Transaction.account_id == account_id)
+
+        if year:
+            query = query.filter(extract('year', Transaction.transaction_date) == int(year))
+        if month:
+            query = query.filter(extract('month', Transaction.transaction_date) == int(month))
+
+        return query.order_by(Transaction.transaction_date.desc(), Transaction.id.desc()).limit(limit).all()
+
+    @staticmethod
+    def get_account_monthly_stats(
+        db: Session,
+        workspace_id: int,
+        account_id: int,
+        year: Optional[int] = None,
+        month: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """Estatísticas mensais de uma conta específica"""
+        from app.models import Account, Transaction
+        now = datetime.datetime.now()
+        target_year = int(year) if year else now.year
+        target_month = int(month) if month else now.month
+
+        acc = db.query(Account).filter(Account.id == account_id, Account.workspace_id == workspace_id).first()
+        if not acc:
+            return {}
+
+        txs = db.query(Transaction).filter(
+            Transaction.workspace_id == workspace_id,
+            Transaction.account_id == account_id,
+            extract('year', Transaction.transaction_date) == target_year,
+            extract('month', Transaction.transaction_date) == target_month
+        ).order_by(Transaction.transaction_date.desc(), Transaction.id.desc()).all()
+
+        total_income = sum(t.amount for t in txs if t.type == "income")
+        total_expense = sum(t.amount for t in txs if t.type == "expense")
+
+        return {
+            "account": acc,
+            "year": target_year,
+            "month": target_month,
+            "total_income": total_income,
+            "total_expense": total_expense,
+            "net_monthly": total_income - total_expense,
+            "current_balance": acc.current_balance,
+            "transactions": txs,
+            "transaction_count": len(txs)
+        }
+
+    @staticmethod
     def join_shared_workspace(db: Session, user: User, invite_code: str) -> Optional[Workspace]:
         """Permite que um parceiro/sócio entre na mesma conta compartilhada usando o código de convite"""
         ws = db.query(Workspace).filter(Workspace.invite_code == invite_code.strip().upper()).first()
@@ -571,22 +710,96 @@ class FinanceService:
         return ws
 
     @staticmethod
+    def update_transaction(
+        db: Session,
+        transaction_id: int,
+        transaction_date: Optional[datetime.datetime] = None,
+        description: Optional[str] = None,
+        amount: Optional[float] = None,
+        type: Optional[str] = None,
+        category_name: Optional[str] = None,
+        account_id: Optional[int] = None,
+        payment_method: Optional[str] = None,
+        notes: Optional[str] = None
+    ) -> Optional[Transaction]:
+        """Atualiza uma transação existente, incluindo data de lançamento/vencimento e ajusta saldos de contas"""
+        from app.models import Transaction, Account, Category
+        tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+        if not tx:
+            return None
+
+        old_acc_id = tx.account_id
+        new_acc_id = account_id if account_id is not None else tx.account_id
+
+        # Atualiza campos da transação
+        if transaction_date is not None:
+            tx.transaction_date = transaction_date
+        if description is not None and description.strip():
+            tx.description = description.strip()
+        if amount is not None:
+            tx.amount = float(amount)
+        if type is not None:
+            tx.type = type
+        if payment_method is not None:
+            tx.payment_method = payment_method.strip()
+        if notes is not None:
+            tx.notes = notes
+        tx.account_id = new_acc_id
+
+        # Atualiza categoria se informada
+        if category_name and category_name.strip():
+            cat = db.query(Category).filter(
+                Category.workspace_id == tx.workspace_id,
+                Category.name.ilike(category_name.strip())
+            ).first()
+            if not cat:
+                icon = "💵" if (type or tx.type) == "income" else "🏷️"
+                cat = Category(
+                    workspace_id=tx.workspace_id,
+                    name=category_name.strip().title(),
+                    type=type or tx.type,
+                    icon=icon,
+                    color="#6366f1"
+                )
+                db.add(cat)
+                db.flush()
+            tx.category_id = cat.id
+
+        ws_id = tx.workspace_id
+        db.commit()
+        db.refresh(tx)
+
+        # Recalcula saldos reais das contas afetadas
+        from app.services.account_service import AccountService
+        if old_acc_id:
+            AccountService.recalculate_account_balance(db, old_acc_id)
+        if new_acc_id and new_acc_id != old_acc_id:
+            AccountService.recalculate_account_balance(db, new_acc_id)
+
+        try:
+            from app.services.event_bus import event_bus
+            event_bus.notify_workspace_update(ws_id)
+        except Exception:
+            pass
+
+        return tx
+
+    @staticmethod
     def delete_transaction(db: Session, transaction_id: int) -> bool:
-        """Exclui uma transação e estorna o saldo da conta bancária vinculada"""
+        """Exclui uma transação e recalcula o saldo real da conta bancária vinculada"""
         from app.models import Transaction
         tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
         if not tx:
             return False
 
-        if tx.account:
-            if tx.type == "income":
-                tx.account.current_balance -= tx.amount
-            else:
-                tx.account.current_balance += tx.amount
-
+        acc_id = tx.account_id
         ws_id = tx.workspace_id
         db.delete(tx)
         db.commit()
+
+        if acc_id:
+            from app.services.account_service import AccountService
+            AccountService.recalculate_account_balance(db, acc_id)
 
         try:
             from app.services.event_bus import event_bus
@@ -598,25 +811,26 @@ class FinanceService:
 
     @staticmethod
     def delete_transactions_batch(db: Session, transaction_ids: List[int]) -> int:
-        """Exclui múltiplos lançamentos em lote estornando os saldos devidamente"""
+        """Exclui múltiplos lançamentos em lote recalculando os saldos devidamente"""
         from app.models import Transaction
         if not transaction_ids:
             return 0
 
         txs = db.query(Transaction).filter(Transaction.id.in_(transaction_ids)).all()
+        affected_acc_ids = {tx.account_id for tx in txs if tx.account_id}
         count = 0
         ws_id = None
         for tx in txs:
             ws_id = tx.workspace_id
-            if tx.account:
-                if tx.type == "income":
-                    tx.account.current_balance -= tx.amount
-                else:
-                    tx.account.current_balance += tx.amount
             db.delete(tx)
             count += 1
 
         db.commit()
+
+        if affected_acc_ids:
+            from app.services.account_service import AccountService
+            for acc_id in affected_acc_ids:
+                AccountService.recalculate_account_balance(db, acc_id)
 
         if ws_id:
             try:

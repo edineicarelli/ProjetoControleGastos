@@ -78,6 +78,54 @@ class ReminderService:
         return query.order_by(Reminder.due_date.asc()).all()
 
     @staticmethod
+    def update_reminder(
+        db: Session,
+        reminder_id: int,
+        due_date: Optional[datetime.datetime] = None,
+        title: Optional[str] = None,
+        amount: Optional[float] = None,
+        type: Optional[str] = None,
+        recurrence: Optional[str] = None,
+        reminder_hours_before: Optional[int] = None,
+        status: Optional[str] = None
+    ) -> Optional[Reminder]:
+        """Atualiza a data de vencimento e demais informações de um lembrete/conta existente"""
+        reminder = db.query(Reminder).filter(Reminder.id == reminder_id).first()
+        if not reminder:
+            return None
+
+        if due_date is not None:
+            reminder.due_date = due_date
+        if title is not None and title.strip():
+            reminder.title = title.strip()
+        if amount is not None:
+            reminder.amount = float(amount)
+        if type is not None:
+            reminder.type = type
+        if recurrence is not None:
+            reminder.recurrence = recurrence
+        if reminder_hours_before is not None:
+            reminder.reminder_hours_before = int(reminder_hours_before)
+        if status is not None:
+            reminder.status = status
+
+        db.commit()
+        db.refresh(reminder)
+        return reminder
+
+    @staticmethod
+    def snooze_reminder(db: Session, reminder_id: int, days: int = 1) -> Optional[Reminder]:
+        """Adia a data de vencimento de um lembrete em N dias"""
+        reminder = db.query(Reminder).filter(Reminder.id == reminder_id).first()
+        if not reminder:
+            return None
+
+        reminder.due_date = reminder.due_date + datetime.timedelta(days=days)
+        db.commit()
+        db.refresh(reminder)
+        return reminder
+
+    @staticmethod
     def mark_as_paid(db: Session, reminder_id: int) -> Optional[Reminder]:
         reminder = db.query(Reminder).filter(Reminder.id == reminder_id).first()
         if not reminder:

@@ -250,6 +250,7 @@ async def dashboard_page(
 
     accounts = AccountService.get_accounts(db, current_workspace.id)
     summary = FinanceService.get_monthly_summary(db, current_workspace.id, year=clean_year, month=clean_month)
+    expenses_by_account = FinanceService.get_expenses_by_account_summary(db, current_workspace.id, year=clean_year, month=clean_month)
     monthly_transactions = summary["monthly_transactions"]
     workspace_members = UserService.get_workspace_members(db, current_workspace.id)
     all_system_users = UserService.get_all_users(db)
@@ -288,6 +289,7 @@ async def dashboard_page(
             "accounts": accounts,
             "categories": categories,
             "summary": summary,
+            "expenses_by_account": expenses_by_account,
             "all_transactions": monthly_transactions,
             "transactions": monthly_transactions,
             "selected_year": summary["year"],
@@ -430,6 +432,34 @@ class TransactionCreateRequest(BaseModel):
     receipt_url: Optional[str] = None
     include_items: bool = True
     items: Optional[List[TransactionItemPayload]] = None
+
+class TransactionUpdateRequest(BaseModel):
+    transaction_date: Optional[str] = None  # YYYY-MM-DD
+    description: Optional[str] = None
+    amount: Optional[float] = None
+    type: Optional[str] = None
+    category_name: Optional[str] = None
+    account_id: Optional[int] = None
+    payment_method: Optional[str] = None
+    notes: Optional[str] = None
+
+class ReminderCreateRequest(BaseModel):
+    workspace_id: int
+    title: str
+    amount: float = 0.0
+    due_date: str  # YYYY-MM-DD
+    type: str = "to_pay"  # 'to_pay' ou 'to_receive'
+    recurrence: str = "none"  # 'none', 'monthly', 'weekly', 'yearly'
+    reminder_hours_before: int = 24
+
+class ReminderUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    amount: Optional[float] = None
+    due_date: Optional[str] = None  # YYYY-MM-DD
+    type: Optional[str] = None
+    recurrence: Optional[str] = None
+    reminder_hours_before: Optional[int] = None
+    status: Optional[str] = None
 
 class BatchDeleteTransactionsRequest(BaseModel):
     transaction_ids: List[int]
@@ -1094,6 +1124,33 @@ async def api_delete_shopping_item(item_id: int, db: Session = Depends(get_db)):
     db.commit()
     return {"success": True}
 
+@router.put("/api/transactions/{transaction_id}")
+async def api_update_transaction(transaction_id: int, payload: TransactionUpdateRequest, db: Session = Depends(get_db)):
+    """Atualiza a data do lançamento/vencimento e demais dados de uma transação existente"""
+    from datetime import datetime
+    parsed_date = None
+    if payload.transaction_date:
+        try:
+            parsed_date = datetime.strptime(payload.transaction_date, "%Y-%m-%d")
+        except Exception:
+            pass
+
+    tx = FinanceService.update_transaction(
+        db=db,
+        transaction_id=transaction_id,
+        transaction_date=parsed_date,
+        description=payload.description,
+        amount=payload.amount,
+        type=payload.type,
+        category_name=payload.category_name,
+        account_id=payload.account_id,
+        payment_method=payload.payment_method,
+        notes=payload.notes
+    )
+    if not tx:
+        raise HTTPException(status_code=404, detail="Lançamento não encontrado")
+    return {"success": True, "transaction_id": tx.id}
+
 @router.delete("/api/transactions/{transaction_id}")
 async def api_delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
     success = FinanceService.delete_transaction(db, transaction_id)
@@ -1112,6 +1169,68 @@ async def api_toggle_shopping_item(item_id: int, db: Session = Depends(get_db)):
     if not item:
         raise HTTPException(status_code=404, detail="Item não encontrado")
     return {"success": True, "is_checked": item.is_checked}
+
+@router.post("/api/reminders")
+async def api_create_reminder(payload: ReminderCreateRequest, db: Session = Depends(get_db)):
+    """Cria uma nova conta a pagar ou a receber com data de vencimento"""
+    from datetime import datetime, timedelta
+    try:
+        parsed_due = datetime.strptime(payload.due_date, "%Y-%m-%d")
+    except Exception:
+        parsed_due = datetime.utcnow() + timedelta(days=5)
+
+    user = db.query(User).first()
+    user_id = user.id if user else 1
+
+    rem = ReminderService.create_reminder(
+        db=db,
+        workspace_id=payload.workspace_id,
+        user_id=user_id,
+        title=payload.title,
+        amount=payload.amount,
+        due_date=parsed_due,
+        type=payload.type,
+        recurrence=payload.recurrence,
+        reminder_hours_before=payload.reminder_hours_before
+    )
+    return {"success": True, "reminder_id": rem.id}
+
+@router.put("/api/reminders/{reminder_id}")
+async def api_update_reminder(reminder_id: int, payload: ReminderUpdateRequest, db: Session = Depends(get_db)):
+    """Atualiza a data de vencimento e demais informações de um lembrete/conta existente"""
+    from datetime import datetime
+    parsed_due = None
+    if payload.due_date:
+        try:
+            parsed_due = datetime.strptime(payload.due_date, "%Y-%m-%d")
+        except Exception:
+            pass
+
+    rem = ReminderService.update_reminder(
+        db=db,
+        reminder_id=reminder_id,
+        due_date=parsed_due,
+        title=payload.title,
+        amount=payload.amount,
+        type=payload.type,
+        recurrence=payload.recurrence,
+        reminder_hours_before=payload.reminder_hours_before,
+        status=payload.status
+    )
+    if not rem:
+        raise HTTPException(status_code=404, detail="Lembrete não encontrado")
+    return {
+        "success": True,
+        "reminder": {
+            "id": rem.id,
+            "title": rem.title,
+            "amount": rem.amount,
+            "due_date": rem.due_date.strftime("%Y-%m-%d"),
+            "type": rem.type,
+            "recurrence": rem.recurrence,
+            "reminder_hours_before": rem.reminder_hours_before
+        }
+    }
 
 @router.post("/api/reminders/pay/{reminder_id}")
 async def api_pay_reminder(reminder_id: int, db: Session = Depends(get_db)):

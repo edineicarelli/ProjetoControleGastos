@@ -76,18 +76,20 @@ DATABASE_URL="sqlite:///./finance_control.db"
 
 # Configuração do Servidor Web
 HOST="0.0.0.0"
-PORT=8000
-BASE_URL="http://localhost:8000"
+PORT=8085
+BASE_URL="http://localhost:8085"
 ```
 
-### 3. Executar com Docker & HTTPS (Recomendado para Produção)
+### 3. Executar com Docker (Recomendado para Produção na porta 8085)
 
-O projeto inclui configuração pronta com **Caddy** para emissão e renovação automática de certificados SSL/TLS (**HTTPS** via Let's Encrypt / ZeroSSL) e proxy reverso.
+O projeto está configurado para publicação direta e conteinerizada (ideal para Portainer, Docker Compose ou VPS):
 
-1. Configure seu domínio no `.env`:
+1. Configure seu `.env`:
    ```env
-   DOMAIN_NAME="seudominio.com"
-   BASE_URL="https://seudominio.com"
+   TELEGRAM_BOT_TOKEN="SEU_TOKEN_TELEGRAM"
+   GEMINI_API_KEY="SUA_API_KEY_GEMINI"
+   PORT=8085
+   BASE_URL="http://seu-ip-ou-dominio:8085"
    ```
 
 2. Inicie os containers com Docker Compose:
@@ -95,7 +97,7 @@ O projeto inclui configuração pronta com **Caddy** para emissão e renovação
    docker compose up -d --build
    ```
 
-O Caddy cuidará automaticamente de redirecionar HTTP (porta 80) para HTTPS (porta 443) e obter os certificados SSL.
+O serviço expõe a aplicação mapeada na porta **8085** (`8085:8000`), com volumes persistentes para o banco de dados (`controle_gastos_data`) e uploads (`controle_gastos_uploads`).
 
 ---
 
@@ -112,7 +114,7 @@ python -m app.main
 ```
 
 O servidor estará disponível em:
-- **Dashboard Web**: `http://localhost:8000/dashboard`
+- **Dashboard Web**: `http://localhost:8000/dashboard` (ou `http://localhost:8085/dashboard` em produção Docker)
 - **Documentação da API (Swagger)**: `http://localhost:8000/docs`
 
 
