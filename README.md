@@ -97,7 +97,7 @@ O projeto está configurado para publicação direta e conteinerizada (ideal par
    docker compose up -d --build
    ```
 
-O serviço expõe a aplicação mapeada na porta **8085** (`8085:8000`), com volumes persistentes para o banco de dados (`controle_gastos_data`) e uploads (`controle_gastos_uploads`).
+O serviço expõe a aplicação mapeada na porta **8085** (`8085:8085`), com volumes persistentes para o banco de dados (`controle_gastos_data`) e uploads (`controle_gastos_uploads`).
 
 ---
 

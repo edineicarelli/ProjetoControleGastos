@@ -13,6 +13,9 @@ from app.schemas.ai_response import (
 )
 from app.utils import format_currency_br, format_number_br
 
+import io
+from PIL import Image, ImageOps, ImageEnhance
+
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """Você é o cérebro financeiro do Bot de Gestão Financeira Inteligente no Telegram.
@@ -20,27 +23,31 @@ Sua missão é analisar mensagens dos usuários (texto livre, transcrição de �
 
 Você deve responder RIGOROSAMENTE em formato JSON com as chaves:
 - `intent`: Uma das opções: 'transaction_record', 'transaction_update', 'account_transfer', 'reminder_create', 'reminder_update', 'goal_action', 'vehicle_action', 'shopping_action', 'financial_query', 'profile_switch', 'general_chat'
-- `transactions`: Lista de transações encontradas se for transaction_record: [{"type": "expense" ou "income", "amount": float, "description": str, "category_name": str, "payment_method": str, "date_offset_days": int, "items": [{"name": str, "quantity": float, "unit": str, "unit_price": float, "total_price": float, "category": str}]}]
-  OBSERVAÇÃO SOBRE ITENS E UNIDADE DE MEDIDA: Sempre que o comprovante/cupom fiscal/nota fiscal/PDF contiver detalhamento de produtos (ex: compras de mercado, farmácia, atacado, materiais, consumo detalhado), extraia na chave `items` cada produto individualmente com nome, quantidade, unidade, preço unitário e valor total.
-  ATENÇÃO À UNIDADE COMERCIAL: Itens vendidos a granel ou por peso na balança (ex: Pão Francês, Pão de Sal, Pão de Queijo a peso, Queijo/Presunto fatiado, Carnes/Açougue/Frango/Peixe, Hortifruti/Frutas/Legumes/Verduras) SEMPRE devem ter a unidade `kg` (ou `g`), NUNCA `un`. Para produtos em embalagens fechadas use `un`, `pct`, `cx` ou `l`.
-- `transaction_update`: Se for transaction_update (alterar/corrigir valor ou data de um lançamento/gasto/receita já efetivado no extrato): {"description_query": str (termo de busca como 'mercado', 'almoço', 'posto' ou 'ultimo'), "new_amount": float ou null, "new_date": "YYYY-MM-DD" ou null, "date_offset_days": int ou null (ex: -1 para ontem, 0 para hoje)}
-- `transfer`: Se for account_transfer (transferência entre contas, bancos, dinheiro, saques, depósitos): {"from_account": str (conta devedora/origem), "to_account": str (conta credora/destino), "amount": float, "description": str}
-- `reminder`: Se for reminder_create: {"title": str, "amount": float, "type": "to_pay" ou "to_receive", "due_date": "YYYY-MM-DD", "recurrence": "none"|"monthly"|"weekly"}
-- `reminder_update`: Se for reminder_update (alterar/mudar/adiar a data de vencimento OU alterar valor de uma conta/lembrete/boleto existente): {"title": str, "new_due_date": "YYYY-MM-DD" ou null, "new_amount": float ou null}
+- `transactions`: Lista de transações encontradas se for transaction_record: [{"type": "expense" ou "income", "amount": float, "description": str, "category_name": str, "payment_method": str, "date_offset_days": int, "transaction_date": "YYYY-MM-DD" ou null, "items": [{"name": str, "quantity": float, "unit": str, "unit_price": float, "total_price": float, "category": str}]}]
+  OBSERVAÇÕES SOBRE CUPONS, NOTAS E DOCUMENTOS:
+  1. NOME DO ESTABELECIMENTO: Limpe termos jurídicos desnecessários (ex: 'SUPERMERCADOS ZORNITTA LTDA' -> 'Supermercados Zornitta', 'POSTO SHELL AUTO POSTO LTDA' -> 'Posto Shell').
+  2. DATA DO DOCUMENTO: Se houver data de emissão impressa (ex: 19/09/2026), preencha `transaction_date` como "YYYY-MM-DD" e calcule `date_offset_days` em relação à data atual.
+  3. DETALHAMENTO DE ITENS: Se o cupom/nota contiver produtos comprados, extraia TODOS os produtos na chave `items` com nome limpo (sem códigos de barras ou prefixos numéricos de SKU), quantidade exata (inclusive frações decimais como 0.534 kg), unidade correta ('kg' para itens pesados na balança como pão, queijo, carnes, hortifruti; 'un', 'pct', 'cx', 'l' para os demais), preço unitário e total.
+  4. FORMA DE PAGAMENTO: Detecte com precisão (Dinheiro, Pix, Cartão de Crédito, Cartão de Débito, Boleto, etc.).
+- `transaction_update`: Se for transaction_update: {"description_query": str, "new_amount": float ou null, "new_date": "YYYY-MM-DD" ou null, "date_offset_days": int ou null}
+- `transfer`: Se for account_transfer: {"from_account": str, "to_account": str, "amount": float, "description": str}
+- `reminder`: Se for reminder_create (boletos a pagar, contas de consumo como água/luz/energia/gás/internet/aluguel): {"title": str, "amount": float, "type": "to_pay" ou "to_receive", "due_date": "YYYY-MM-DD", "recurrence": "none"|"monthly"|"weekly"}
+- `reminder_update`: Se for reminder_update: {"title": str, "new_due_date": "YYYY-MM-DD" ou null, "new_amount": float ou null}
 - `goal`: Se for goal_action: {"action": "deposit"|"create"|"check", "goal_name": str, "amount": float}
 - `vehicle`: Se for vehicle_action: {"type": "fuel"|"oil_change"|"revision"|"repair"|"odometer", "description": str, "amount": float, "km": float, "next_due_km": float ou null}
 - `shopping`: Se for shopping_action: {"items": [{"name": str, "quantity": float, "unit": str, "estimated_price": float}]}
 - `target_profile`: Se for profile_switch: "personal" ou "business" ou "family"
-- `friendly_response`: Resposta amigável e elegante em português com emojis e markdown do Telegram. Sempre formate valores monetários no padrão brasileiro Real: R$ 1.250,00 (vírgula para decimais e ponto para milhares).
+- `friendly_response`: Resposta amigável e elegante em português com emojis e markdown do Telegram.
 """
 
 class AIService:
     def __init__(self):
         self.models = [
+            "gemini-3.5-flash-lite",
             "gemini-flash-lite-latest",
-            "gemini-3.1-flash-lite-preview",
+            "gemini-3.1-flash-lite",
             "gemini-3.6-flash",
-            "gemini-3-flash-preview"
+            "gemini-3.1-flash-lite-preview"
         ]
         self._client: Optional[httpx.AsyncClient] = None
 
@@ -59,6 +66,45 @@ class AIService:
     def is_gemini_active(self) -> bool:
         return bool(self.api_key and self.api_key != "SUA_GEMINI_API_KEY_AQUI")
 
+    def _optimize_image_for_ocr(self, image_file_path: str) -> tuple[str, str]:
+        """
+        Otimiza a imagem para OCR ultrarrápido mantendo máxima nitidez dos caracteres:
+        - Ajusta orientação EXIF (fotos de smartphone na vertical)
+        - Redimensiona proporcionalmente para resolução ideal (max 1800px)
+        - Aplica leve realce de contraste para recibos térmicos
+        - Comprime em JPEG leve e nítido (~85%), reduzindo payload em 90%+
+        """
+        try:
+            with Image.open(image_file_path) as img:
+                img = ImageOps.exif_transpose(img)
+                if img.mode != "RGB":
+                    img = img.convert("RGB")
+
+                max_dim = 1800
+                w, h = img.size
+                if max(w, h) > max_dim:
+                    ratio = max_dim / max(w, h)
+                    new_size = (int(w * ratio), int(h * ratio))
+                    img = img.resize(new_size, Image.Resampling.LANCZOS)
+
+                enhancer = ImageEnhance.Contrast(img)
+                img = enhancer.enhance(1.15)
+
+                buf = io.BytesIO()
+                img.save(buf, format="JPEG", quality=85, optimize=True)
+                b64_data = base64.b64encode(buf.getvalue()).decode("utf-8")
+                return "image/jpeg", b64_data
+        except Exception as e:
+            logger.warning(f"Erro ao otimizar imagem com Pillow: {e}. Usando arquivo bruto.")
+            with open(image_file_path, "rb") as f:
+                raw_b64 = base64.b64encode(f.read()).decode("utf-8")
+            mime = "image/jpeg"
+            if image_file_path.lower().endswith(".png"):
+                mime = "image/png"
+            elif image_file_path.lower().endswith(".webp"):
+                mime = "image/webp"
+            return mime, raw_b64
+
     async def _call_gemini(self, parts: List[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
         """Executa a chamada HTTP assíncrona para a API do Gemini com client pool e failover rápido"""
         if not self.is_gemini_active():
@@ -72,7 +118,8 @@ class AIService:
                 "parts": parts
             }],
             "generationConfig": {
-                "responseMimeType": "application/json"
+                "responseMimeType": "application/json",
+                "temperature": 0.1
             }
         }
 
@@ -187,35 +234,28 @@ class AIService:
 
         if os.path.exists(image_file_path):
             try:
-                with open(image_file_path, "rb") as f:
-                    img_b64 = base64.b64encode(f.read()).decode("utf-8")
-
-                mime_type = "image/jpeg"
-                lower_path = image_file_path.lower()
-                if lower_path.endswith(".png"):
-                    mime_type = "image/png"
-                elif lower_path.endswith(".webp"):
-                    mime_type = "image/webp"
+                mime_type, img_b64 = self._optimize_image_for_ocr(image_file_path)
 
                 context_str = f"Data atual: {datetime.now().strftime('%Y-%m-%d')}\nContexto: {json.dumps(user_context or {}, ensure_ascii=False)}"
                 prompt_ocr = (
                     f"{context_str}\n\n"
-                    f"Você é um especialista em OCR e leitura inteligente de cupons fiscais brasileiros, NFC-e, SAT, DANFE, "
-                    f"recibos de maquininha (Cielo, Stone, Rede, PagSeguro), comprovantes de PIX, transferências ou extratos.\n\n"
-                    f"Analise a imagem com extrema atenção:\n"
-                    f"1. Identifique o Nome do Estabelecimento ou Beneficiário (ex: 'Supermercado X', 'Posto Y', 'Farmácia Z', 'João Silva').\n"
-                    f"2. Identifique o VALOR TOTAL PAGO (procure por 'TOTAL R$', 'VALOR A PAGAR', 'VALOR TOTAL', 'VALOR LÍQUIDO', 'VALOR:', 'PAGAMENTO', 'R$').\n"
-                    f"3. Identifique a forma de pagamento ou banco (ex: Pix, Cartão de Crédito, Débito, Dinheiro, Banco do Brasil, Caixa, Santander, Nubank, Itaú, Bradesco, Inter).\n"
-                    f"4. Categorize a despesa (Alimentação, Supermercado, Transporte, Saúde, Moradia, etc.) ou se for comprovante recebido marque como 'income'.\n"
-                    f"5. DETALHAMENTO DE ITENS (MUITO IMPORTANTE): Se o cupom/recibo/nota contiver uma lista de produtos/itens comprados (ex: compras de supermercado, farmácia, atacado, restaurante detalhado, materiais), extraia CADA PRODUTO individualmente no array 'items' dentro da transação contendo:\n"
-                    f"   - 'name': Nome legível e completo do produto\n"
-                    f"   - 'quantity': Quantidade comprada (float, ex: 1.0, 2.5, 0.75)\n"
-                    f"   - 'unit': Unidade comercial ('kg' para itens pesados na balança como pão francês, hortifruti, carnes e frios; 'un', 'pct', 'cx', 'l' para os demais)\n"
+                    f"Você é um especialista de alto nível em OCR e leitura inteligente de cupons fiscais brasileiros, NFC-e, SAT, DANFE, "
+                    f"recibos de maquininha de cartão (Cielo, Stone, Rede, PagSeguro, etc.), comprovantes de PIX, transferências bancárias ou extratos.\n\n"
+                    f"Analise a imagem com extrema atenção e precisão:\n"
+                    f"1. NOME DO ESTABELECIMENTO / BENEFICIÁRIO: Extraia o nome fantasia ou razão social amigável (ex: 'Supermercados Zornitta', 'Posto Shell', 'Farmácia Raia', 'Restaurante Sabor', 'João Silva'). Remova CNPJ, números de filial ou termos jurídicos desnecessários.\n"
+                    f"2. VALOR TOTAL PAGO: Procure o total final pago (ex: 'VALOR TOTAL R$', 'TOTAL R$', 'VALOR A PAGAR', 'VALOR LÍQUIDO', 'VALOR RECEBIDO', 'TOTAL', 'PAGAMENTO').\n"
+                    f"3. DATA E HORA DE EMISSÃO: Identifique a data impressa no comprovante (ex: 'Emissão: 19/09/2026', 'Data: 19/09/2026') e preencha `transaction_date` no formato 'YYYY-MM-DD'. Preencha também `date_offset_days` com a diferença em dias em relação à data atual.\n"
+                    f"4. FORMA DE PAGAMENTO: Identifique com precisão a forma utilizada (ex: Dinheiro, Pix, Cartão de Crédito, Cartão de Débito, Vale Alimentação, VR, Ticket, Carteira Digital, Boleto) ou o banco do comprovante.\n"
+                    f"5. CATEGORIA: Sugira a categoria financeira adequada (Supermercado, Alimentação, Transporte, Saúde, Moradia, Lazer, etc.) ou se for valor recebido marque como 'income'.\n"
+                    f"6. DETALHAMENTO DE ITENS (MUITO IMPORTANTE): Se o cupom contiver lista de produtos (ex: compras de supermercado, atacado, farmácia, materiais, restaurante discriminado), extraia CADA PRODUTO individualmente no array 'items' contendo:\n"
+                    f"   - 'name': Nome limpo e legível do produto (remova códigos numéricos de barras/SKU antes do nome. Ex: de '2061000008067 PAO CASEIRO KG ZOR' extraia 'Pão Caseiro Kg Zor')\n"
+                    f"   - 'quantity': Quantidade comprada (float com casas decimais se pesado, ex: 0.534, 1.820, 1.0)\n"
+                    f"   - 'unit': Unidade de medida ('kg' ou 'g' para itens pesados na balança como pães, queijos, carnes, hortifruti; 'un', 'pct', 'cx', 'l' para produtos embalados)\n"
                     f"   - 'unit_price': Preço unitário em reais\n"
                     f"   - 'total_price': Preço total do item (quantity * unit_price)\n"
-                    f"   - 'category': Categoria sugerida para o item (ex: 'Mercearia', 'Hortifruti', 'Carnes & Aves', 'Laticínios & Frios', 'Bebidas', 'Limpeza', 'Higiene & Beleza', 'Padaria', 'Farmácia', 'Geral')\n"
-                    f"6. Se a imagem NÃO for um comprovante financeiro ou estiver ilegível/embaçada e não for possível encontrar o valor, retorne intent 'general_chat' com friendly_response explicando de forma clara e amigável que não conseguiu ler o comprovante e orientando o usuário a enviar uma foto mais nítida.\n"
-                    f"7. Retorne RIGOROSAMENTE o JSON solicitado."
+                    f"   - 'category': Subcategoria do item (ex: Mercearia, Hortifruti, Carnes & Aves, Laticínios & Frios, Bebidas, Limpeza, Higiene, Padaria, Farmácia, Geral)\n"
+                    f"7. Se a imagem NÃO for um documento financeiro ou estiver completamente ilegível, retorne intent 'general_chat' com friendly_response gentil orientando a enviar foto mais nítida.\n"
+                    f"8. Retorne RIGOROSAMENTE o JSON solicitado."
                 )
                 parts = [
                     {
@@ -278,19 +318,20 @@ class AIService:
 
                 prompt_doc = (
                     f"{context_str}{pdf_text_prompt}\n\n"
-                    f"Você é um especialista em análise financeira e leitura de documentos brasileiros (PDFs de boletos bancários, contas de consumo como energia/luz/água/internet, faturas, DANFE, notas fiscais e comprovantes de transferência/Pix).\n\n"
-                    f"Analise o documento e a legenda do usuário com extrema atenção:\n"
-                    f"1. Se o documento for um BOLETO A PAGAR, CONTA DE CONSUMO (Luz/Energia/Água/Internet/Aluguel) OU se a legenda indicar que é uma conta a pagar/lembrete (ex: 'boleto a pagar de energia', 'lembrete de conta', 'pagar até dia X'):\n"
+                    f"Você é um especialista em análise financeira e leitura de documentos brasileiros (PDFs de boletos bancários, contas de consumo como energia/luz/água/internet/telefone, faturas de cartão, DANFE, notas fiscais eletrônicas e comprovantes de transferência/Pix).\n\n"
+                    f"Analise o documento e a legenda com máxima precisão:\n"
+                    f"1. Se o documento for um BOLETO A PAGAR, CONTA DE CONSUMO (Luz/Energia/Água/Internet/Aluguel/Fatura) OU se for uma conta futura:\n"
                     f"   - Retorne intent 'reminder_create' com:\n"
-                    f"     - title: Nome da conta (ex: 'Conta de Energia', 'Boleto CPFL', 'Conta de Luz')\n"
+                    f"     - title: Nome claro da conta (ex: 'Conta de Energia', 'Boleto CPFL', 'Conta de Água', 'Fatura Nubank', 'Internet')\n"
                     f"     - amount: Valor total a pagar\n"
                     f"     - due_date: Data de vencimento no formato YYYY-MM-DD\n"
                     f"     - type: 'to_pay'\n"
-                    f"     - recurrence: 'none' ou 'monthly' se for recorrente\n"
+                    f"     - recurrence: 'none' ou 'monthly' se for conta mensal recorrente\n"
                     f"2. Se o documento for um COMPROVANTE DE PAGAMENTO JÁ REALIZADO, PIX EFETUADO, NOTA FISCAL (DANFE/NFC-e) OU CUPOM FISCAL:\n"
-                    f"   - Retorne intent 'transaction_record' com o lançamento de despesa ou receita correspondente.\n"
-                    f"   - DETALHAMENTO DE ITENS: Se o documento contiver produtos/itens discriminados (ex: DANFE, cupom de compras, mercado, farmácia), extraia CADA PRODUTO individualmente no array 'items' dentro da transação contendo: name, quantity, unit, unit_price, total_price e category.\n"
-                    f"3. Se o documento for ilegível, protegido por senha ou sem dados financeiros, retorne intent 'general_chat' explicando o problema de forma clara.\n"
+                    f"   - Retorne intent 'transaction_record' com o lançamento correspondente.\n"
+                    f"   - Preencha `transaction_date` (YYYY-MM-DD) com a data do pagamento/emissão se presente no documento.\n"
+                    f"   - DETALHAMENTO DE ITENS: Se o documento contiver produtos/itens discriminados (ex: DANFE, notas de compras), extraia CADA PRODUTO individualmente no array 'items' contendo: name, quantity, unit, unit_price, total_price e category.\n"
+                    f"3. Se o documento for ilegível, protegido por senha ou sem dados financeiros legíveis, retorne intent 'general_chat' explicando o problema amigavelmente.\n"
                     f"4. Retorne RIGOROSAMENTE o JSON especificado."
                 )
 

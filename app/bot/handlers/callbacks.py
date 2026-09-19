@@ -1089,7 +1089,10 @@ async def callback_query_handler(update: Update, context: ContextTypes.DEFAULT_T
                     has_items=bool(tx.items_count > 0),
                     items_count=tx.items_count
                 )
-                await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=markup)
+                try:
+                    await query.edit_message_text(msg, parse_mode="Markdown", reply_markup=markup)
+                except Exception:
+                    await query.edit_message_text(msg, reply_markup=markup)
 
         elif data.startswith("dup_cancel_"):
             token = data.replace("dup_cancel_", "")

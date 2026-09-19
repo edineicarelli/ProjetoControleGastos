@@ -82,7 +82,13 @@ def format_items_list_text(items: list, max_items: int = 25) -> str:
             unit_str = ""
 
         tot_str = f" → *{format_currency_br(tot_num)}*" if tot_num > 0 else ""
-        lines.append(f"  *{idx}.* {name}{unit_str}{tot_str}")
+        clean_name = str(name).replace("_", " ").replace("*", "").replace("[", "(").replace("]", ")").replace("`", "")
+        lines.append(f"  *{idx}.* {clean_name}{unit_str}{tot_str}")
+
+    if len(items) > max_items:
+        lines.append(f"  _... e mais {len(items) - max_items} itens na lista completa._")
+
+    return "\n" + "\n".join(lines)
 
 def format_full_receipt_text(tx: Any, items: list, max_items: int = 35) -> str:
     """
@@ -91,9 +97,10 @@ def format_full_receipt_text(tx: Any, items: list, max_items: int = 35) -> str:
     cat_name = tx.category.name if getattr(tx, "category", None) else "Mercado"
     acc_name = tx.account.name if getattr(tx, "account", None) else (getattr(tx, "payment_method", "Outro") or "Outro")
     date_str = tx.transaction_date.strftime("%d/%m/%Y") if getattr(tx, "transaction_date", None) else ""
+    clean_desc = str(tx.description).replace("_", " ").replace("*", "")
 
     lines = [
-        f"🧾 *Cupom Fiscal - {tx.description}*",
+        f"🧾 *Cupom Fiscal - {clean_desc}*",
         f"💰 *Valor Total:* {format_currency_br(tx.amount)} | 📅 *Data:* {date_str}",
         f"💳 *Conta/Pagamento:* {acc_name} | 🏷️ *Categoria:* {cat_name}",
         "───────────────────"
@@ -138,7 +145,8 @@ def format_full_receipt_text(tx: Any, items: list, max_items: int = 35) -> str:
 
         tot_str = f" → *{format_currency_br(tot_num)}*" if tot_num > 0 else ""
         cat_str = f" `[{cat}]`" if cat and cat not in ["Geral", "Outros", ""] else ""
-        lines.append(f"*{idx}.* {name}{unit_str}{tot_str}{cat_str}")
+        clean_name = str(name).replace("_", " ").replace("*", "").replace("[", "(").replace("]", ")").replace("`", "")
+        lines.append(f"*{idx}.* {clean_name}{unit_str}{tot_str}{cat_str}")
 
     if len(items) > max_items:
         lines.append(f"\n_... e mais {len(items) - max_items} itens na lista completa._")

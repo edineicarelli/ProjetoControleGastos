@@ -18,6 +18,7 @@ class ExtractedTransaction(BaseModel):
     category_name: str = Field("Outros", description="Nome da categoria sugerida (ex: Alimentação, Supermercado, Transporte, Saúde, Moradia, Salário, Lazer, etc.)")
     payment_method: str = Field("Cartão de Crédito", description="Forma de pagamento inferida ou informada: Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, etc.")
     date_offset_days: int = Field(0, description="Diferença de dias em relação a hoje: 0 para hoje, -1 para ontem, -2 para anteontem, etc.")
+    transaction_date: Optional[str] = Field(None, description="Data da transação (YYYY-MM-DD) se informada ou impressa no cupom/documento")
     items: List[ExtractedTransactionItem] = Field(default_factory=list, description="Lista detalhada item a item dos produtos comprados no cupom/nota fiscal, se houver (ex: itens de mercado, farmácia, etc.)")
 
 

@@ -24,6 +24,19 @@ from app.utils import format_currency_br, format_number_br, format_items_list_te
 
 logger = logging.getLogger(__name__)
 
+async def _safe_reply_text(message, text: str, parse_mode: Optional[str] = "Markdown", reply_markup=None):
+    """Envia mensagem ao usuário com segurança, usando fallback para texto sem parse_mode se o Markdown falhar"""
+    try:
+        return await message.reply_text(text, parse_mode=parse_mode, reply_markup=reply_markup)
+    except Exception as e:
+        logger.warning(f"Erro ao enviar mensagem com parse_mode={parse_mode}: {e}. Retentando sem formatação...")
+        try:
+            return await message.reply_text(text, parse_mode=None, reply_markup=reply_markup)
+        except Exception as e2:
+            logger.error(f"Erro ao enviar mensagem mesmo sem formatação: {e2}")
+            return None
+
+
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Processa mensagens de texto livre com IA após verificar autenticação por senha"""
     text = update.message.text.strip()
@@ -857,7 +870,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                         f"🏷️ *Saldo Inicial:* {format_currency_br(matched_acc.initial_balance)}\n\n"
                         f"📊 O extrato e saldo consolidado foram sincronizados."
                     )
-                    await update.message.reply_text(
+                    await _safe_reply_text(
+                        update.message,
                         msg,
                         parse_mode="Markdown",
                         reply_markup=get_account_detail_keyboard(matched_acc)
@@ -870,7 +884,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         # Executa a ação detectada pela IA
         response_msg, markup = await _apply_parsed_result(db, user, ws, parsed)
 
-        await update.message.reply_text(
+        await _safe_reply_text(
+            update.message,
             response_msg,
             parse_mode="Markdown",
             reply_markup=markup or get_dashboard_link_keyboard(str(user_tg.id))
@@ -907,7 +922,8 @@ async def voice_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         parsed = await ai_service.parse_audio(file_path, user_context)
         response_msg, markup = await _apply_parsed_result(db, user, ws, parsed)
 
-        await update.message.reply_text(
+        await _safe_reply_text(
+            update.message,
             f"🎙️ *Áudio Processado!*\n\n{response_msg}",
             parse_mode="Markdown",
             reply_markup=markup or get_dashboard_link_keyboard(str(user_tg.id))
@@ -922,12 +938,15 @@ async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         return
 
     db = SessionLocal()
+    status_msg = None
     try:
         user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
         if not user or not ws:
             return
 
+        # Feedback visual imediato para o usuário
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_photo")
+        status_msg = await _safe_reply_text(update.message, "⚡ *Processando comprovante com IA...* 🧾", parse_mode="Markdown")
 
         photo = photos[-1]  # Maior resolução
         file_obj = await context.bot.get_file(photo.file_id)
@@ -944,10 +963,18 @@ async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
         parsed = await ai_service.parse_receipt_image(file_path, user_context)
 
+        # Remove o aviso de carregamento para exibir a mensagem final limpa
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+
         # Se identificou transações ou ações financeiras com sucesso
         if parsed.intent in ["transaction_record", "account_transfer", "reminder_create", "shopping_action", "vehicle_action", "goal_action"]:
             response_msg, markup = await _apply_parsed_result(db, user, ws, parsed, receipt_url=file_path)
-            await update.message.reply_text(
+            await _safe_reply_text(
+                update.message,
                 f"📸 *Comprovante Lido com Sucesso!*\n\n{response_msg}",
                 parse_mode="Markdown",
                 reply_markup=markup or get_dashboard_link_keyboard(str(user_tg.id))
@@ -964,14 +991,21 @@ async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
                     "• Certifique-se de que o **Valor (R$)** e o **Estabelecimento** estejam visíveis\n"
                     "• Você também pode digitar direto: ex: `Padaria 25 no Pix` ou gravar um áudio 🎙️"
                 )
-            await update.message.reply_text(
+            await _safe_reply_text(
+                update.message,
                 error_msg,
                 parse_mode="Markdown",
                 reply_markup=get_dashboard_link_keyboard(str(user_tg.id))
             )
     except Exception as e:
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
         logger.error(f"Erro ao processar foto: {e}", exc_info=True)
-        await update.message.reply_text(
+        await _safe_reply_text(
+            update.message,
             "❌ *Ocorreu uma falha ao tentar ler a imagem.*\n\n"
             "Não foi possível processar o arquivo enviado. Por favor, tente enviar novamente uma foto mais nítida ou digite o lançamento manualmente.",
             parse_mode="Markdown"
@@ -1003,12 +1037,14 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
         return
 
     db = SessionLocal()
+    status_msg = None
     try:
         user, ws = await get_authenticated_bot_user(update, context, db, notify=True)
         if not user or not ws:
             return
 
         await context.bot.send_chat_action(chat_id=update.effective_chat.id, action="upload_document")
+        status_msg = await _safe_reply_text(update.message, "⚡ *Processando documento com IA...* 📄", parse_mode="Markdown")
 
         os.makedirs(os.path.join(settings.UPLOAD_DIR, "documents"), exist_ok=True)
         file_path = os.path.join(settings.UPLOAD_DIR, "documents", f"doc_{doc.file_id}{ext}")
@@ -1030,9 +1066,16 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
         else:
             parsed = await ai_service.parse_document(file_path, mime_type="application/pdf", user_context=user_context)
 
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
+
         if parsed.intent in ["transaction_record", "account_transfer", "reminder_create", "shopping_action", "vehicle_action", "goal_action"]:
             response_msg, markup = await _apply_parsed_result(db, user, ws, parsed, receipt_url=file_path)
-            await update.message.reply_text(
+            await _safe_reply_text(
+                update.message,
                 f"📄 *Arquivo Lido com Sucesso!*\n\n{response_msg}",
                 parse_mode="Markdown",
                 reply_markup=markup or get_dashboard_link_keyboard(str(user_tg.id))
@@ -1048,14 +1091,21 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
                     "• O arquivo não deve possuir senha de proteção\n"
                     "• Se preferir, você pode digitar o gasto: ex: `Pix de 150 para João`"
                 )
-            await update.message.reply_text(
+            await _safe_reply_text(
+                update.message,
                 error_msg,
                 parse_mode="Markdown",
                 reply_markup=get_dashboard_link_keyboard(str(user_tg.id))
             )
     except Exception as e:
+        if status_msg:
+            try:
+                await status_msg.delete()
+            except Exception:
+                pass
         logger.error(f"Erro ao processar documento: {e}", exc_info=True)
-        await update.message.reply_text(
+        await _safe_reply_text(
+            update.message,
             "❌ *Ocorreu uma falha ao processar o arquivo enviado.*\n\n"
             "Não foi possível extrair as informações. Por favor, tente enviar uma foto nítida ou digite o lançamento no chat.",
             parse_mode="Markdown"
@@ -1076,7 +1126,13 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
         last_tx = None
         
         for t in parsed.transactions:
-            date = datetime.datetime.utcnow() + datetime.timedelta(days=t.date_offset_days)
+            if getattr(t, "transaction_date", None):
+                try:
+                    date = datetime.datetime.strptime(t.transaction_date, "%Y-%m-%d")
+                except Exception:
+                    date = datetime.datetime.utcnow() + datetime.timedelta(days=t.date_offset_days)
+            else:
+                date = datetime.datetime.utcnow() + datetime.timedelta(days=t.date_offset_days)
             t_items = getattr(t, "items", None)
             
             # Verificação anti-duplicidade precisa (valor, fornecedor e itens)
