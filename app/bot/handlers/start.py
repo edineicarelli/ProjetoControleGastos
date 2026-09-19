@@ -67,7 +67,8 @@ async def help_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"🔹 `/mercado` - Checklist interativo de supermercado.\n"
         f"🔹 `/painel` - Acesse o Dashboard Web com gráficos interativos e exportação.\n"
         f"🔹 `/login <usuario> <senha>` - Autentica ou altera usuário conectado.\n"
-        f"🔹 `/sair` ou `/logout` - Bloqueia a sessão do bot no Telegram por segurança."
+        f"🔹 `/sair` ou `/logout` - Bloqueia a sessão do bot no Telegram por segurança.\n"
+        f"🔹 `/versao` ou `/sobre` - Informações de versão instalada e commit do sistema."
     )
     await update.message.reply_text(msg, parse_mode="Markdown")
 

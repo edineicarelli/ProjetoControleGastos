@@ -1186,14 +1186,20 @@ body {
             </div>
 
             <!-- Sidebar Footer -->
-            <div class="sidebar-footer">
-                <div class="user-status-widget">
-                    <span class="status-dot"></span>
-                    <span class="status-text">Sincronizado IA</span>
+            <div class="sidebar-footer" style="display: flex; flex-direction: column; gap: 0.5rem; padding: 0.75rem 1rem;">
+                <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                    <div class="user-status-widget">
+                        <span class="status-dot"></span>
+                        <span class="status-text">Sincronizado IA</span>
+                    </div>
+                    <button class="btn-action" onclick="window.location.reload()" title="Atualizar Painel">
+                        🔄
+                    </button>
                 </div>
-                <button class="btn-action" onclick="window.location.reload()" title="Atualizar Painel">
-                    🔄
-                </button>
+                <div class="version-tag-badge" style="display: flex; justify-content: space-between; align-items: center; width: 100%; font-size: 0.70rem; color: var(--text-muted); border-top: 1px solid rgba(255,255,255,0.06); padding-top: 0.4rem;" title="Versão da Aplicação e Commit de Produção">
+                    <span>🚀 <strong>v{{ app_version }}</strong> <code style="background: rgba(255,255,255,0.08); padding: 1px 5px; border-radius: 4px; font-size: 0.68rem; color: #a5b4fc; font-weight: 600;">{{ app_commit }}</code></span>
+                    <span style="font-size: 0.68rem; color: var(--text-muted);">Porta 8085</span>
+                </div>
             </div>
         </aside>
 
@@ -2628,6 +2634,9 @@ body {
                     💾 Backups & Segurança
                 </button>
                 {% endif %}
+                <button type="button" class="btn btn-secondary btn-sm" id="btn-config-about" onclick="switchConfigSubTab('about')" style="font-weight: 600; border-radius: 8px; padding: 0.45rem 0.85rem; background: transparent; color: var(--text-secondary); border-color: transparent;">
+                    ℹ️ Versão & Sobre
+                </button>
             </div>
 
             <div class="modal-body" style="display: flex; flex-direction: column; gap: 1.25rem; padding: 1.25rem 1.5rem; flex: 1 1 auto; overflow-y: auto; overflow-x: hidden;">
@@ -3431,6 +3440,67 @@ body {
 
                 </div>
                 {% endif %}
+
+                <!-- SECTION 5: INFORMAÇÕES DE VERSÃO & SISTEMA -->
+                <div id="config-section-about" style="display: none; flex-direction: column; gap: 1.25rem;">
+                    <div>
+                        <h4 style="font-size: 0.95rem; font-weight: 700; color: #fff; margin: 0;">ℹ️ Informações da Aplicação & Versão</h4>
+                        <p style="color: var(--text-muted); font-size: 0.8rem; margin-top: 2px;">
+                            Detalhes técnicos do build, versão em execução e status dos serviços.
+                        </p>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem;">
+                        <!-- Card 1: Versão do Sistema -->
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Versão da Aplicação</div>
+                            <div style="font-size: 1.25rem; font-weight: 800; color: #818cf8; margin-top: 0.25rem; display: flex; align-items: center; gap: 0.5rem;">
+                                <span>v{{ app_version }}</span>
+                                <span style="background: rgba(99,102,241,0.2); color: #c7d2fe; font-size: 0.7rem; font-weight: 600; padding: 2px 6px; border-radius: 6px;">Oficial</span>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">
+                                Release: <strong>{{ app_release_date }}</strong>
+                            </div>
+                        </div>
+
+                        <!-- Card 2: Commit Git -->
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Commit do Repositório</div>
+                            <div style="font-size: 1.1rem; font-weight: 700; color: #34d399; margin-top: 0.25rem; font-family: monospace;">
+                                <code>{{ app_commit }}</code>
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">
+                                Branch: <strong>main</strong> (GitHub)
+                            </div>
+                        </div>
+
+                        <!-- Card 3: Ambiente & Rede -->
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Ambiente & Porta</div>
+                            <div style="font-size: 1.1rem; font-weight: 700; color: #fbbf24; margin-top: 0.25rem;">
+                                Produção • Porta 8085
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">
+                                FastAPI + Uvicorn + SQLite
+                            </div>
+                        </div>
+
+                        <!-- Card 4: IA & Telegram -->
+                        <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1rem;">
+                            <div style="font-size: 0.75rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase;">Inteligência Artificial</div>
+                            <div style="font-size: 0.95rem; font-weight: 700; color: #38bdf8; margin-top: 0.25rem;">
+                                Gemini 3.5 Flash Lite
+                            </div>
+                            <div style="font-size: 0.75rem; color: var(--text-muted); margin-top: 0.35rem;">
+                                Multimodal OCR & Áudio Ativo
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.25); border-radius: 12px; padding: 1rem; font-size: 0.82rem; color: var(--text-secondary); line-height: 1.5;">
+                        💡 <strong>Dica de Verificação:</strong> Você também pode conferir a versão diretamente no Telegram enviando o comando <code style="color: #c7d2fe;">/versao</code> ou <code style="color: #c7d2fe;">/sobre</code>.
+                    </div>
+                </div>
 
             </div>
             <div class="modal-footer">

@@ -795,3 +795,24 @@ async def cupom_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     finally:
         db.close()
 
+
+async def versao_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando /versao ou /sobre para exibir a versão instalada do sistema"""
+    from app.version import get_version_info
+    v = get_version_info()
+    user_tg = update.effective_user
+    msg = (
+        f"🚀 *{v['app_name']}*\n\n"
+        f"📌 *Versão da Aplicação:* `{v['version_tag']}`\n"
+        f"🏷️ *Commit GitHub:* `{v['commit']}`\n"
+        f"📅 *Data do Release:* `{v['release_date']}`\n"
+        f"🌐 *Ambiente:* `Produção (Porta 8085)`\n"
+        f"⚡ *Motor IA:* `Gemini 3.5 Flash Lite (Multimodal)`\n\n"
+        f"✨ _Sistema 100% atualizado e sincronizado em tempo real com o Painel Web._"
+    )
+    await update.message.reply_text(
+        msg,
+        parse_mode="Markdown",
+        reply_markup=get_dashboard_link_keyboard(str(user_tg.id) if user_tg else "")
+    )
+

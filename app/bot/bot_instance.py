@@ -25,7 +25,8 @@ from app.bot.handlers.commands import (
     logout_handler,
     cupom_handler,
     despesas_handler,
-    receitas_handler
+    receitas_handler,
+    versao_handler
 )
 from app.bot.handlers.text_voice_photo import (
     text_message_handler,
@@ -90,6 +91,9 @@ def create_bot_app():
     app.add_handler(CommandHandler("ganhos", receitas_handler))
     app.add_handler(CommandHandler("receitasmes", receitas_handler))
     app.add_handler(CommandHandler("receitasconta", receitas_handler))
+    app.add_handler(CommandHandler("versao", versao_handler))
+    app.add_handler(CommandHandler("sobre", versao_handler))
+    app.add_handler(CommandHandler("status", versao_handler))
 
     # Handlers Multimodais (Texto, Voz, Foto, Documentos)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))

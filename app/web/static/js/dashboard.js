@@ -895,12 +895,14 @@ function switchConfigSubTab(tabName) {
     const secUsers = document.getElementById('config-section-users');
     const secTokens = document.getElementById('config-section-tokens');
     const secBackups = document.getElementById('config-section-backups');
+    const secAbout = document.getElementById('config-section-about');
     
     const btnProfiles = document.getElementById('btn-config-profiles');
     const btnSystemUsers = document.getElementById('btn-config-system-users');
     const btnUsers = document.getElementById('btn-config-users');
     const btnTokens = document.getElementById('btn-config-tokens');
     const btnBackups = document.getElementById('btn-config-backups');
+    const btnAbout = document.getElementById('btn-config-about');
 
     // Reset all tabs
     if (secProfiles) secProfiles.style.display = 'none';
@@ -908,6 +910,7 @@ function switchConfigSubTab(tabName) {
     if (secUsers) secUsers.style.display = 'none';
     if (secTokens) secTokens.style.display = 'none';
     if (secBackups) secBackups.style.display = 'none';
+    if (secAbout) secAbout.style.display = 'none';
 
     const inactiveBtn = (btn) => {
         if (!btn) return;
@@ -928,6 +931,7 @@ function switchConfigSubTab(tabName) {
     inactiveBtn(btnUsers);
     inactiveBtn(btnTokens);
     inactiveBtn(btnBackups);
+    inactiveBtn(btnAbout);
 
     if (tabName === 'system-users') {
         if (secSystemUsers) secSystemUsers.style.display = 'flex';
@@ -944,6 +948,9 @@ function switchConfigSubTab(tabName) {
         activeBtn(btnBackups);
         if (typeof loadBackupConfig === 'function') loadBackupConfig();
         if (typeof loadBackupList === 'function') loadBackupList();
+    } else if (tabName === 'about') {
+        if (secAbout) secAbout.style.display = 'flex';
+        activeBtn(btnAbout);
     } else {
         if (secProfiles) secProfiles.style.display = 'flex';
         activeBtn(btnProfiles);

@@ -29,6 +29,7 @@ from app.services.market_analytics_service import MarketAnalyticsService
 from app.services.event_bus import event_bus
 
 from app.utils import format_currency_br, format_number_br
+from app.version import get_version_info
 
 router = APIRouter()
 
@@ -36,6 +37,15 @@ templates_dir = os.path.join(os.path.dirname(__file__), "templates")
 templates = Jinja2Templates(directory=templates_dir)
 templates.env.filters["currency_br"] = format_currency_br
 templates.env.filters["number_br"] = format_number_br
+templates.env.globals["app_version"] = get_version_info()["version"]
+templates.env.globals["app_commit"] = get_version_info()["commit"]
+templates.env.globals["app_release_date"] = get_version_info()["release_date"]
+templates.env.globals["version_info"] = get_version_info()
+
+@router.get("/api/version")
+async def api_get_version():
+    """Retorna as informações de versão do sistema e commit atual"""
+    return JSONResponse(content=get_version_info())
 
 # =========================================================================
 # ROTAS DE AUTENTICAÇÃO, LOGIN E RECUPERAÇÃO DE SENHA
