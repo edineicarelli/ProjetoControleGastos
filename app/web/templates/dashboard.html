@@ -997,6 +997,41 @@ body {
   font-size: 0.82rem;
 }
 
+.text-role-admin { color: #a78bfa !important; }
+.text-role-mod { color: #34d399 !important; }
+.text-role-viewer { color: #fbbf24 !important; }
+
+.badge-role-admin { background: rgba(99, 102, 241, 0.2); color: #a78bfa; border: 1px solid rgba(99, 102, 241, 0.4); }
+.badge-role-mod { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); }
+.badge-role-viewer { background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4); }
+
+.bg-health-good { background: #10b981 !important; }
+.bg-health-medium { background: #6366f1 !important; }
+.bg-health-warn { background: #f59e0b !important; }
+.bg-health-bad { background: #f43f5e !important; }
+
+.system-user-item.is-inactive, .workspace-member-item.is-inactive {
+  display: none;
+  opacity: 0.6;
+  border: 1px dashed rgba(239, 68, 68, 0.4);
+}
+.system-user-item.is-active, .workspace-member-item.is-active {
+  display: flex;
+}
+.current-ws-item {
+  border: 1px solid var(--primary) !important;
+}
+.checked-item-text {
+  text-decoration: line-through;
+  opacity: 0.5;
+}
+.text-item-price-checked {
+  color: #34d399 !important;
+}
+.text-item-price-unchecked {
+  color: var(--text-primary) !important;
+}
+
 @media (max-width: 1024px) {
   .sidebar {
     transform: translateX(-100%);
@@ -1065,7 +1100,7 @@ body {
                         <div style="font-size: 0.82rem; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                             {{ logged_user.name or logged_user.username }}
                         </div>
-                        <div style="font-size: 0.68rem; font-weight: 600; text-transform: uppercase; color: {% if is_admin %}#a78bfa{% elif is_moderator %}#34d399{% else %}#fbbf24{% endif %};">
+                        <div class="{% if is_admin %}text-role-admin{% elif is_moderator %}text-role-mod{% else %}text-role-viewer{% endif %}" style="font-size: 0.68rem; font-weight: 600; text-transform: uppercase;">
                             {% if is_admin %}🛡️ Administrador{% elif is_moderator %}⚖️ Moderador{% else %}👁️ Visualizador{% endif %}
                         </div>
                     </div>
@@ -1326,7 +1361,7 @@ body {
                                     <span class="status-badge" style="background: var(--info-bg); color: #38bdf8;">{{ summary.health_status }}</span>
                                 </div>
                                 <div class="health-bar-mini">
-                                    <div class="health-bar-fill" style="width: {{ summary.health_score }}%; background: {% if summary.health_score >= 80 %}#10b981{% elif summary.health_score >= 50 %}#6366f1{% elif summary.health_score >= 30 %}#f59e0b{% else %}#f43f5e{% endif %};"></div>
+                                    <div class="health-bar-fill {% if summary.health_score >= 80 %}bg-health-good{% elif summary.health_score >= 50 %}bg-health-medium{% elif summary.health_score >= 30 %}bg-health-warn{% else %}bg-health-bad{% endif %}" style="--bar-width: {{ summary.health_score }}%; width: var(--bar-width);"></div>
                                 </div>
                             </div>
                         </div>
@@ -1367,7 +1402,7 @@ body {
                                     <span style="display: flex; align-items: center; gap: 0.5rem;">
                                         <span>{{ acc.icon }}</span> <b>{{ acc.name }}</b>
                                     </span>
-                                    <span style="font-weight: 700; color: {% if acc.current_balance >= 0 %}var(--income){% else %}var(--expense){% endif %};">
+                                    <span class="{% if acc.current_balance >= 0 %}text-income{% else %}text-expense{% endif %}" style="font-weight: 700;">
                                         {{ acc.current_balance | currency_br }}
                                     </span>
                                 </div>
@@ -1443,7 +1478,7 @@ body {
                                             onclick="handleEditTxBtn(this)">
                                             ✏️
                                         </button>
-                                        <button class="btn-icon-danger" title="Excluir lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
+                                        <button class="btn-icon-danger" title="Excluir lançamento" data-id="{{ tx.id }}" onclick="deleteSingleTransaction(this.dataset.id)">
                                             🗑️
                                         </button>
                                     </div>
@@ -1467,7 +1502,7 @@ body {
                             <button class="btn btn-secondary" onclick="openTransferModal()" style="display: inline-flex; align-items: center; gap: 0.4rem;">
                                 🔄 <span>Transferência Entre Contas</span>
                             </button>
-                            <button class="btn btn-primary" onclick="openCreateAccountModal({{ current_workspace.id }})">
+                            <button class="btn btn-primary" data-workspace-id="{{ current_workspace.id }}" onclick="openCreateAccountModal(this.dataset.workspaceId)">
                                 ➕ Nova Conta
                             </button>
                         </div>
@@ -1502,19 +1537,19 @@ body {
                                 </div>
 
                                 <div class="account-footer-actions">
-                                    <button class="btn-action" onclick="filterByAccountFromAccountsTab({{ acc.id }})" title="Ver extrato e despesas desta conta" style="color: #38bdf8;">
+                                    <button class="btn-action" data-id="{{ acc.id }}" onclick="filterByAccountFromAccountsTab(this.dataset.id)" title="Ver extrato e despesas desta conta" style="color: #38bdf8;">
                                         📊 Extrato / Despesas
                                     </button>
-                                    <button class="btn-action" onclick="confirmZeroAccount({{ acc.id }}, '{{ acc.name|escape }}', {{ selected_year or 'null' }}, {{ selected_month or 'null' }})" title="Zerar movimentações e saldo no mês" style="color: #fbbf24;">
+                                    <button class="btn-action" data-id="{{ acc.id }}" data-name="{{ acc.name }}" data-year="{{ selected_year or '' }}" data-month="{{ selected_month or '' }}" onclick="confirmZeroAccount(this.dataset.id, this.dataset.name, this.dataset.year, this.dataset.month)" title="Zerar movimentações e saldo no mês" style="color: #fbbf24;">
                                         🧹 Zerar Mês
                                     </button>
-                                    <button class="btn-action" onclick='openEditAccountModal({{ acc.id }}, "{{ acc.name|escape }}", "{{ acc.type }}", {{ acc.initial_balance or 0.0 }}, "{{ acc.icon }}", "{{ acc.color }}", {{ "true" if (acc.is_active != False) else "false" }})' title="Editar Conta">
+                                    <button class="btn-action" data-id="{{ acc.id }}" data-name="{{ acc.name }}" data-type="{{ acc.type }}" data-balance="{{ acc.initial_balance or 0.0 }}" data-icon="{{ acc.icon }}" data-color="{{ acc.color or '' }}" data-active="{{ 'true' if (acc.is_active != False) else 'false' }}" onclick="openEditAccountModal(this.dataset.id, this.dataset.name, this.dataset.type, this.dataset.balance, this.dataset.icon, this.dataset.color, this.dataset.active === 'true')" title="Editar Conta">
                                         ✏️ Editar
                                     </button>
-                                    <button class="btn-action" onclick="toggleAccountActive({{ acc.id }})" title="Ativar ou Inativar Conta">
+                                    <button class="btn-action" data-id="{{ acc.id }}" onclick="toggleAccountActive(this.dataset.id)" title="Ativar ou Inativar Conta">
                                         {% if acc.is_active != False %}⏸️ Inativar{% else %}▶️ Reativar{% endif %}
                                     </button>
-                                    <button class="btn-action delete" onclick="deleteAccount({{ acc.id }}, '{{ acc.name|escape }}')" title="Excluir Conta">
+                                    <button class="btn-action delete" data-id="{{ acc.id }}" data-name="{{ acc.name }}" onclick="deleteAccount(this.dataset.id, this.dataset.name)" title="Excluir Conta">
                                         🗑️
                                     </button>
                                 </div>
@@ -1525,7 +1560,7 @@ body {
                                 <span style="font-size: 2.2rem;">💳</span>
                                 <p style="margin: 0; font-size: 1rem; color: #fff; font-weight: 600;">Nenhuma conta configurada neste perfil.</p>
                                 <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.5rem;">Cadastre suas contas bancárias ou carteiras para acompanhar seus saldos.</p>
-                                <button class="btn btn-primary" onclick="openCreateAccountModal({{ current_workspace.id }})">
+                                <button class="btn btn-primary" data-workspace-id="{{ current_workspace.id }}" onclick="openCreateAccountModal(this.dataset.workspaceId)">
                                     ➕ Cadastrar Primeira Conta
                                 </button>
                             </div>
@@ -1547,7 +1582,7 @@ body {
                         </div>
                         <div class="expenses-by-account-grid" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
                             {% for acc_exp in expenses_by_account.accounts %}
-                            <div class="exp-acc-chip" onclick="quickFilterAccount('{{ acc_exp.account_id if acc_exp.account_id is not none else '' }}')" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 0.75rem; cursor: pointer; transition: all 0.2s ease; position: relative;" title="Filtrar lançamentos de {{ acc_exp.name }}">
+                            <div class="exp-acc-chip" data-account-id="{{ acc_exp.account_id if acc_exp.account_id is not none else '' }}" onclick="quickFilterAccount(this.dataset.accountId)" style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 0.75rem; cursor: pointer; transition: all 0.2s ease; position: relative;" title="Filtrar lançamentos de {{ acc_exp.name }}">
                                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.35rem;">
                                     <span style="font-size: 0.85rem; font-weight: 600; color: #fff; display: flex; align-items: center; gap: 0.35rem;">
                                         {{ acc_exp.icon }} {{ acc_exp.name }}
@@ -1610,7 +1645,7 @@ body {
                                     ➕ <span>Novo Gasto</span>
                                 </button>
 
-                                <button class="btn btn-secondary btn-sm" onclick="confirmZeroMonth({{ current_workspace.id }}, '{{ summary.month_year_label }}', {{ selected_year or 'null' }}, {{ selected_month or 'null' }})" style="color: #fbbf24; border-color: rgba(245, 158, 11, 0.35);" title="Zerar todos os lançamentos deste mês">
+                                <button class="btn btn-secondary btn-sm" data-workspace-id="{{ current_workspace.id }}" data-month-label="{{ summary.month_year_label }}" data-year="{{ selected_year or '' }}" data-month="{{ selected_month or '' }}" onclick="confirmZeroMonth(this.dataset.workspaceId, this.dataset.monthLabel, this.dataset.year, this.dataset.month)" style="color: #fbbf24; border-color: rgba(245, 158, 11, 0.35);" title="Zerar todos os lançamentos deste mês">
                                     🧹 <span>Zerar Mês</span>
                                 </button>
 
@@ -1669,7 +1704,7 @@ body {
                                             <td style="font-weight: 500;" class="tx-desc">
                                                 <span>{{ tx.description }}</span>
                                                 {% if tx.has_items or (tx.items and tx.items|length > 0) or (tx.items_count and tx.items_count > 0) %}
-                                                <button type="button" class="badge-items" onclick="event.stopPropagation(); openTransactionItemsModal({{ tx.id }})" title="Ver itens discriminados desta compra">
+                                                <button type="button" class="badge-items" data-id="{{ tx.id }}" onclick="event.stopPropagation(); openTransactionItemsModal(this.dataset.id)" title="Ver itens discriminados desta compra">
                                                     🛒 {{ tx.items_count or tx.items|length }} itens
                                                 </button>
                                                 {% endif %}
@@ -1705,7 +1740,7 @@ body {
                                                         onclick="handleEditTxBtn(this)">
                                                         ✏️
                                                     </button>
-                                                    <button class="btn-icon-danger" title="Excluir lançamento" onclick="deleteSingleTransaction({{ tx.id }})">
+                                                    <button class="btn-icon-danger" title="Excluir lançamento" data-id="{{ tx.id }}" onclick="deleteSingleTransaction(this.dataset.id)">
                                                         🗑️
                                                     </button>
                                                 </div>
@@ -1746,13 +1781,13 @@ body {
                                         <span class="category-tag" style="background: var(--income-bg); color: var(--income);">
                                             {{ g.progress_percentage }}%
                                         </span>
-                                        <button class="btn-icon-danger" title="Excluir meta" onclick="deleteGoal({{ g.id }}, '{{ g.title|replace("'", "\\'") }}')">
+                                        <button class="btn-icon-danger" title="Excluir meta" data-id="{{ g.id }}" data-title="{{ g.title }}" onclick="deleteGoal(this.dataset.id, this.dataset.title)">
                                             🗑️
                                         </button>
                                     </div>
                                 </div>
                                 <div class="progress-track">
-                                    <div class="progress-fill" style="width: {{ g.progress_percentage }}%;"></div>
+                                    <div class="progress-fill" style="--bar-width: {{ g.progress_percentage }}%; width: var(--bar-width);"></div>
                                 </div>
                                 <div class="goal-stats">
                                     <span>Atual: <b>{{ g.current_amount | currency_br }}</b></span>
@@ -1793,7 +1828,7 @@ body {
                                     </div>
                                     <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                                         <span style="font-weight: 700; font-size: 1.05rem; margin-right: 0.25rem;">{{ r.amount | currency_br }}</span>
-                                        <button class="btn btn-primary btn-sm" onclick="markReminderPaid({{ r.id }})">
+                                        <button class="btn btn-primary btn-sm" data-id="{{ r.id }}" onclick="markReminderPaid(this.dataset.id)">
                                             ✅ Pagar
                                         </button>
                                         <button class="btn btn-secondary btn-sm"
@@ -1808,7 +1843,7 @@ body {
                                             title="Alterar data de vencimento e dados">
                                             ✏️ Editar
                                         </button>
-                                        <button class="btn-icon-danger" title="Excluir lembrete" onclick="deleteReminder({{ r.id }}, '{{ r.title|replace("'", "\\'") }}')">
+                                        <button class="btn-icon-danger" title="Excluir lembrete" data-id="{{ r.id }}" data-title="{{ r.title }}" onclick="deleteReminder(this.dataset.id, this.dataset.title)">
                                             🗑️
                                         </button>
                                     </div>
@@ -1863,7 +1898,7 @@ body {
                                         <td>{{ m.km | number_br }} km</td>
                                         <td style="text-align: right; font-weight: 600;">{{ m.amount | currency_br }}</td>
                                         <td style="text-align: center;">
-                                            <button class="btn-icon-danger" title="Excluir registro" onclick="deleteVehicleMaintenance({{ m.id }}, '{{ m.description|replace("'", "\\'") }}')">
+                                            <button class="btn-icon-danger" title="Excluir registro" data-id="{{ m.id }}" data-desc="{{ m.description }}" onclick="deleteVehicleMaintenance(this.dataset.id, this.dataset.desc)">
                                                 🗑️
                                             </button>
                                         </td>
@@ -1947,15 +1982,15 @@ body {
                                     {% for item in shopping_list.items %}
                                     <div class="overview-item {% if item.is_checked %}checked{% endif %}" id="shopItemRow_{{ item.id }}" style="padding: 0.75rem 1rem; background: rgba(15, 23, 42, 0.4); border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
                                         <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                            <input type="checkbox" {% if item.is_checked %}checked{% endif %} onchange="toggleItemFromWeb({{ item.id }})" style="cursor: pointer; width: 18px; height: 18px; accent-color: #10b981;">
+                                            <input type="checkbox" {% if item.is_checked %}checked{% endif %} data-id="{{ item.id }}" onchange="toggleItemFromWeb(this.dataset.id)" style="cursor: pointer; width: 18px; height: 18px; accent-color: #10b981;">
                                             <div>
-                                                <span style="font-weight: 600; color: #fff; {% if item.is_checked %}text-decoration: line-through; opacity: 0.5;{% endif %}">{{ item.name }}</span>
+                                                <span class="{% if item.is_checked %}checked-item-text{% endif %}" style="font-weight: 600; color: #fff;">{{ item.name }}</span>
                                                 <small style="color: var(--text-muted); display: block;">{{ item.quantity|number_br }} {{ item.unit }}</small>
                                             </div>
                                         </div>
                                         <div style="display: flex; align-items: center; gap: 1rem;">
                                             <div style="text-align: right;">
-                                                <strong style="color: {% if item.is_checked %}#34d399{% else %}var(--text-primary){% endif %}; font-size: 0.95rem;">
+                                                <strong class="{% if item.is_checked %}text-item-price-checked{% else %}text-item-price-unchecked{% endif %}" style="font-size: 0.95rem;">
                                                     {% if item.estimated_price > 0 %}
                                                         {{ (item.estimated_price * item.quantity) | currency_br }}
                                                     {% else %}
@@ -1966,7 +2001,7 @@ body {
                                                     <small style="color: var(--text-muted); display: block; font-size: 0.72rem;">{{ item.estimated_price | currency_br }} / {{ item.unit }}</small>
                                                 {% endif %}
                                             </div>
-                                            <button class="btn-icon-danger" title="Excluir item" onclick="deleteShoppingItem({{ item.id }}, '{{ item.name|replace("'", "\\'") }}')">
+                                            <button class="btn-icon-danger" title="Excluir item" data-id="{{ item.id }}" data-name="{{ item.name }}" onclick="deleteShoppingItem(this.dataset.id, this.dataset.name)">
                                                 🗑️
                                             </button>
                                         </div>
@@ -2746,7 +2781,7 @@ body {
                     <!-- Lista de Todos os Usuários do Sistema -->
                     <div id="systemUsersListContainer" style="display: flex; flex-direction: column; gap: 0.6rem;">
                         {% for usr in all_system_users %}
-                        <div class="overview-item system-user-item" id="system-user-card-{{ usr.id }}" data-user-status="{{ 'active' if usr.is_active else 'inactive' }}" style="padding: 0.85rem 1.15rem; {% if not usr.is_active %}display: none; opacity: 0.6; border: 1px dashed rgba(239,68,68,0.4);{% else %}display: flex;{% endif %} transition: all 0.3s ease;">
+                        <div class="overview-item system-user-item {{ 'is-active' if usr.is_active else 'is-inactive' }}" id="system-user-card-{{ usr.id }}" data-user-status="{{ 'active' if usr.is_active else 'inactive' }}" style="padding: 0.85rem 1.15rem; transition: all 0.3s ease;">
                             <div style="display: flex; align-items: center; gap: 0.85rem;">
                                 <div style="font-size: 1.5rem;">
                                     {% if usr.system_role == 'administrador' %}🛡️{% elif usr.system_role == 'moderador' %}⚖️{% else %}👁️{% endif %}
@@ -2754,10 +2789,7 @@ body {
                                 <div>
                                     <div style="font-weight: 700; color: #fff; font-size: 0.95rem; display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
                                         {{ usr.name }}
-                                        <span style="font-size: 0.72rem; padding: 2px 7px; border-radius: var(--radius-full); font-weight: 700; 
-                                            {% if usr.system_role == 'administrador' %}background: rgba(99, 102, 241, 0.2); color: #a78bfa; border: 1px solid rgba(99, 102, 241, 0.4);
-                                            {% elif usr.system_role == 'moderador' %}background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4);
-                                            {% else %}background: rgba(251, 191, 36, 0.2); color: #fbbf24; border: 1px solid rgba(251, 191, 36, 0.4);{% endif %}">
+                                        <span class="{% if usr.system_role == 'administrador' %}badge-role-admin{% elif usr.system_role == 'moderador' %}badge-role-mod{% else %}badge-role-viewer{% endif %}" style="font-size: 0.72rem; padding: 2px 7px; border-radius: var(--radius-full); font-weight: 700;">
                                             {{ usr.system_role|upper }}
                                         </span>
                                         {% if usr.is_admin_default %}
@@ -2782,11 +2814,11 @@ body {
 
                             {% if is_admin %}
                             <div style="display: flex; align-items: center; gap: 0.4rem;">
-                                <button type="button" class="btn-action edit" onclick='openEditSystemUserModal({{ usr.id }}, "{{ usr.name|replace("'", "\\'") }}", "{{ usr.username }}", "{{ usr.phone }}", "{{ usr.system_role }}", {{ "true" if usr.is_active else "false" }}, {{ "true" if usr.is_admin_default else "false" }}, "{{ usr.telegram_id if (usr.telegram_id and not usr.telegram_id.startswith("user_") and not usr.telegram_id.startswith("pending_") and usr.telegram_id != "admin_system") else "" }}")' title="Editar dados e permissões">
+                                <button type="button" class="btn-action edit" data-id="{{ usr.id }}" data-name="{{ usr.name }}" data-username="{{ usr.username or '' }}" data-phone="{{ usr.phone or '' }}" data-role="{{ usr.system_role }}" data-active="{{ 'true' if usr.is_active else 'false' }}" data-admin-default="{{ 'true' if usr.is_admin_default else 'false' }}" data-tg-id="{{ usr.telegram_id if (usr.telegram_id and not usr.telegram_id.startswith('user_') and not usr.telegram_id.startswith('pending_') and usr.telegram_id != 'admin_system') else '' }}" onclick="openEditSystemUserModal(this.dataset.id, this.dataset.name, this.dataset.username, this.dataset.phone, this.dataset.role, this.dataset.active === 'true', this.dataset.adminDefault === 'true', this.dataset.tgId)" title="Editar dados e permissões">
                                     ✏️
                                 </button>
                                 {% if not usr.is_admin_default %}
-                                <button type="button" class="btn btn-sm btn-secondary" id="system-user-toggle-btn-{{ usr.id }}" onclick="toggleSystemUserActive({{ usr.id }})" style="font-size: 0.75rem; padding: 0.25rem 0.55rem; transition: all 0.2s ease;" title="{% if usr.is_active %}Inativar Acesso{% else %}Ativar Acesso{% endif %}">
+                                <button type="button" class="btn btn-sm btn-secondary" id="system-user-toggle-btn-{{ usr.id }}" data-id="{{ usr.id }}" onclick="toggleSystemUserActive(this.dataset.id)" style="font-size: 0.75rem; padding: 0.25rem 0.55rem; transition: all 0.2s ease;" title="{% if usr.is_active %}Inativar Acesso{% else %}Ativar Acesso{% endif %}">
                                     {% if usr.is_active %}⏸️ Inativar{% else %}▶️ Ativar{% endif %}
                                 </button>
                                 {% endif %}
@@ -2846,7 +2878,7 @@ body {
                     <div class="workspace-list-container">
                         <div style="display: flex; flex-direction: column; gap: 0.5rem;">
                             {% for ws in user_workspaces %}
-                            <div class="overview-item" style="padding: 0.75rem 1rem; {% if ws.id == current_workspace.id %}border: 1px solid var(--primary);{% endif %}">
+                            <div class="overview-item {% if ws.id == current_workspace.id %}current-ws-item{% endif %}" style="padding: 0.75rem 1rem;">
                                 <div style="display: flex; align-items: center; gap: 0.75rem;">
                                     <div style="font-size: 1.3rem;">
                                         {% if ws.type == 'business' %}🏢{% elif ws.type == 'family' %}👨‍👩‍👧‍👦{% else %}👤{% endif %}
@@ -2866,14 +2898,14 @@ body {
                                 </div>
                                 <div style="display: flex; align-items: center; gap: 0.4rem;">
                                     {% if ws.id != current_workspace.id %}
-                                    <button type="button" class="btn btn-secondary btn-sm" onclick="switchToWorkspace({{ ws.id }})" title="Acessar este perfil">
+                                    <button type="button" class="btn btn-secondary btn-sm" data-id="{{ ws.id }}" onclick="switchToWorkspace(this.dataset.id)" title="Acessar este perfil">
                                         Acessar
                                     </button>
                                     {% endif %}
-                                    <button type="button" class="btn-action edit" onclick="openEditWorkspaceForm({{ ws.id }}, '{{ ws.name|replace("'", "\\'") }}', '{{ ws.type }}')" title="Editar perfil">
+                                    <button type="button" class="btn-action edit" data-id="{{ ws.id }}" data-name="{{ ws.name }}" data-type="{{ ws.type }}" onclick="openEditWorkspaceForm(this.dataset.id, this.dataset.name, this.dataset.type)" title="Editar perfil">
                                         ✏️
                                     </button>
-                                    <button type="button" class="btn-action delete" onclick="deleteWorkspace({{ ws.id }}, '{{ ws.name|replace("'", "\\'") }}')" title="Excluir perfil" {% if user_workspaces|length <= 1 %}disabled style="opacity: 0.4; cursor: not-allowed;"{% endif %}>
+                                    <button type="button" class="btn-action delete" data-id="{{ ws.id }}" data-name="{{ ws.name }}" onclick="deleteWorkspace(this.dataset.id, this.dataset.name)" title="Excluir perfil" {% if user_workspaces|length <= 1 %}disabled style="opacity: 0.4; cursor: not-allowed;"{% endif %}>
                                         🗑️
                                     </button>
                                 </div>
@@ -2899,13 +2931,13 @@ body {
                             </div>
                             
                             <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap;">
-                                <button type="button" class="btn btn-primary btn-sm" onclick="copyInviteLink('{{ invite_link }}')">
+                                <button type="button" class="btn btn-primary btn-sm" data-link="{{ invite_link }}" onclick="copyInviteLink(this.dataset.link)">
                                     📋 <span>Copiar Link</span>
                                 </button>
-                                <button type="button" class="btn btn-sm" onclick="shareViaWhatsApp('{{ current_workspace.name }}', '{{ invite_link }}')" style="background: #25D366; color: #fff; font-weight: 600; border: none;">
+                                <button type="button" class="btn btn-sm" data-name="{{ current_workspace.name }}" data-link="{{ invite_link }}" onclick="shareViaWhatsApp(this.dataset.name, this.dataset.link)" style="background: #25D366; color: #fff; font-weight: 600; border: none;">
                                     💬 <span>WhatsApp</span>
                                 </button>
-                                <button type="button" class="btn btn-sm" onclick="shareViaTelegram('{{ current_workspace.name }}', '{{ invite_link }}')" style="background: #229ED9; color: #fff; font-weight: 600; border: none;">
+                                <button type="button" class="btn btn-sm" data-name="{{ current_workspace.name }}" data-link="{{ invite_link }}" onclick="shareViaTelegram(this.dataset.name, this.dataset.link)" style="background: #229ED9; color: #fff; font-weight: 600; border: none;">
                                     ✈️ <span>Telegram</span>
                                 </button>
                             </div>
@@ -2916,7 +2948,7 @@ body {
                                 <span>Código:</span>
                                 <code style="background: rgba(0,0,0,0.5); padding: 0.2rem 0.55rem; border-radius: 4px; color: #818cf8; font-weight: 700;">{{ current_workspace.invite_code }}</code>
                             </div>
-                            <button type="button" class="btn btn-secondary btn-sm" onclick="openShareModalForUser('Novo Convidado', '{{ invite_link }}')" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
+                            <button type="button" class="btn btn-secondary btn-sm" data-name="Novo Convidado" data-link="{{ invite_link }}" onclick="openShareModalForUser(this.dataset.name, this.dataset.link)" style="font-size: 0.75rem; padding: 0.2rem 0.5rem;">
                                 ✉️ Ver Mensagem Pronta
                             </button>
                         </div>
@@ -2993,7 +3025,7 @@ body {
                     <!-- Lista de Usuários do Workspace -->
                     <div id="workspaceMembersListContainer" style="display: flex; flex-direction: column; gap: 0.5rem;">
                         {% for mem in workspace_members %}
-                        <div class="overview-item workspace-member-item" id="workspace-member-card-{{ mem.id }}" data-user-status="{{ 'inactive' if mem.is_active == False else 'active' }}" style="padding: 0.75rem 1rem; {% if mem.is_active == False %}display: none; opacity: 0.6; border: 1px dashed rgba(239,68,68,0.4);{% else %}display: flex;{% endif %} transition: all 0.3s ease;">
+                        <div class="overview-item workspace-member-item {{ 'is-inactive' if mem.is_active == False else 'is-active' }}" id="workspace-member-card-{{ mem.id }}" data-user-status="{{ 'inactive' if mem.is_active == False else 'active' }}" style="padding: 0.75rem 1rem; transition: all 0.3s ease;">
                             <div style="display: flex; align-items: center; gap: 0.75rem;">
                                 <div style="font-size: 1.4rem;">
                                     {% if mem.role == 'owner' %}👑{% elif mem.role == 'admin' %}🛡️{% else %}👤{% endif %}
@@ -3016,16 +3048,16 @@ body {
                                 </div>
                             </div>
                             <div style="display: flex; align-items: center; gap: 0.35rem; flex-wrap: wrap;">
-                                <button type="button" class="btn btn-sm btn-secondary" onclick="openShareModalForUser('{{ mem.name|replace("'", "\\'") }}', '{{ invite_link }}')" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; color: #818cf8;" title="Enviar Link de Convite">
+                                <button type="button" class="btn btn-sm btn-secondary" data-name="{{ mem.name }}" data-link="{{ invite_link }}" onclick="openShareModalForUser(this.dataset.name, this.dataset.link)" style="padding: 0.25rem 0.55rem; font-size: 0.75rem; color: #818cf8;" title="Enviar Link de Convite">
                                     🔗 <span>Convite</span>
                                 </button>
-                                <button type="button" class="btn-action edit" onclick='openEditUserForm({{ mem.id }}, "{{ mem.name|replace("'", "\\'") }}", "{{ mem.username or "" }}", "{{ mem.telegram_id }}", "{{ mem.role }}", {{ "true" if (mem.is_active != False) else "false" }})' title="Editar usuário">
+                                <button type="button" class="btn-action edit" data-id="{{ mem.id }}" data-name="{{ mem.name }}" data-username="{{ mem.username or '' }}" data-tg="{{ mem.telegram_id or '' }}" data-role="{{ mem.role }}" data-active="{{ 'true' if (mem.is_active != False) else 'false' }}" onclick="openEditUserForm(Number(this.dataset.id), this.dataset.name, this.dataset.username, this.dataset.tg, this.dataset.role, this.dataset.active === 'true')" title="Editar usuário">
                                     ✏️
                                 </button>
-                                <button type="button" class="btn-sm btn-secondary" id="workspace-member-toggle-btn-{{ mem.id }}" onclick="toggleUserActive({{ mem.id }})" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; transition: all 0.2s ease;" title="Ativar ou Inativar Acesso">
+                                <button type="button" class="btn-sm btn-secondary" id="workspace-member-toggle-btn-{{ mem.id }}" data-id="{{ mem.id }}" onclick="toggleUserActive(Number(this.dataset.id))" style="padding: 0.25rem 0.5rem; font-size: 0.75rem; transition: all 0.2s ease;" title="Ativar ou Inativar Acesso">
                                     {% if mem.is_active != False %}⏸️ Inativar{% else %}▶️ Ativar{% endif %}
                                 </button>
-                                <button type="button" class="btn-action delete" onclick="removeWorkspaceUser({{ mem.id }}, '{{ mem.name|replace("'", "\\'") }}')" title="Remover deste perfil" {% if mem.role == 'owner' and workspace_members|length <= 1 %}disabled style="opacity: 0.4; cursor: not-allowed;"{% endif %}>
+                                <button type="button" class="btn-action delete" data-id="{{ mem.id }}" data-name="{{ mem.name }}" onclick="removeWorkspaceUser(Number(this.dataset.id), this.dataset.name)" title="Remover deste perfil" {% if mem.role == 'owner' and workspace_members|length <= 1 %}disabled style="opacity: 0.4; cursor: not-allowed;"{% endif %}>
                                     🗑️
                                 </button>
                             </div>
@@ -3530,10 +3562,10 @@ body {
                 </div>
 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem;">
-                    <button type="button" class="btn" onclick="shareModalViaWhatsApp('{{ current_workspace.name }}')" style="background: #25D366; color: #fff; font-weight: 700;">
+                    <button type="button" class="btn" data-ws-name="{{ current_workspace.name }}" onclick="shareModalViaWhatsApp(this.dataset.wsName)" style="background: #25D366; color: #fff; font-weight: 700;">
                         💬 <span>WhatsApp</span>
                     </button>
-                    <button type="button" class="btn" onclick="shareModalViaTelegram('{{ current_workspace.name }}')" style="background: #229ED9; color: #fff; font-weight: 700;">
+                    <button type="button" class="btn" data-ws-name="{{ current_workspace.name }}" onclick="shareModalViaTelegram(this.dataset.wsName)" style="background: #229ED9; color: #fff; font-weight: 700;">
                         ✈️ <span>Telegram</span>
                     </button>
                 </div>
@@ -3894,16 +3926,34 @@ body {
     </div>
 
     <!-- Passing server data to Chart.js safely -->
+    <script id="server-dashboard-data" type="application/json">
+        {
+            "currentWorkspaceId": {{ current_workspace.id|tojson }},
+            "selectedYear": {{ (summary.year if summary else none)|tojson }},
+            "selectedMonth": {{ (summary.month if summary else none)|tojson }},
+            "dashboardData": {
+                "total_income": {{ (summary.total_income if summary else 0)|tojson }},
+                "total_expense": {{ (summary.total_expense if summary else 0)|tojson }},
+                "net_balance": {{ (summary.net_balance if summary else 0)|tojson }},
+                "category_breakdown": {{ (summary.category_breakdown if summary else {})|tojson }}
+            }
+        }
+    </script>
     <script>
-        window.currentWorkspaceId = {{ current_workspace.id }};
-        window.selectedYear = {{ summary.year }};
-        window.selectedMonth = {{ summary.month }};
-        window.dashboardData = {
-            total_income: {{ summary.total_income|tojson }},
-            total_expense: {{ summary.total_expense|tojson }},
-            net_balance: {{ summary.net_balance|tojson }},
-            category_breakdown: {{ summary.category_breakdown|tojson }}
-        };
+        (function() {
+            try {
+                const el = document.getElementById('server-dashboard-data');
+                if (el) {
+                    const sData = JSON.parse(el.textContent);
+                    window.currentWorkspaceId = sData.currentWorkspaceId;
+                    window.selectedYear = sData.selectedYear;
+                    window.selectedMonth = sData.selectedMonth;
+                    window.dashboardData = sData.dashboardData;
+                }
+            } catch (e) {
+                console.error('Error loading dashboard server data', e);
+            }
+        })();
 
         // Mobile sidebar helper
         function toggleMobileSidebar() {

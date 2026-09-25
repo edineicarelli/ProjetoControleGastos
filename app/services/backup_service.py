@@ -98,7 +98,7 @@ class BackupService:
 
     @staticmethod
     def is_smb_path(path: Optional[str]) -> bool:
-        """Verifica se o caminho especificado é um compartilhamento SMB/Windows (ex: \\nas.local\share ou //nas.local/share ou smb://...)"""
+        r"""Verifica se o caminho especificado é um compartilhamento SMB/Windows (ex: \\nas.local\share ou //nas.local/share ou smb://...)"""
         if not path or not isinstance(path, str):
             return False
         p = path.strip()
