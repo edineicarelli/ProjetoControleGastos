@@ -2184,7 +2184,7 @@ function submitCustomReport(e) {
    ========================================================================== */
 
 let currentTxItems = [];
-let isIncludeItemsMode = true;
+let isIncludeItemsMode = false;
 let currentViewingTxId = null;
 let allItemsHistoryCache = [];
 
@@ -2214,9 +2214,9 @@ function openTransactionModal(defaultType = 'expense') {
     const uploadLoader = document.getElementById('uploadLoader');
     if (uploadLoader) uploadLoader.classList.remove('active');
 
-    // Reset items
+    // Reset items - Padrão: Somente Valor Total
     currentTxItems = [];
-    setItemsMode(true);
+    setItemsMode(false);
     renderItemsTable();
 
     modal.style.display = 'flex';
@@ -2415,7 +2415,7 @@ function renderItemsTable() {
     tbody.innerHTML = currentTxItems.map((item, idx) => `
         <tr id="tx-item-row-${idx}">
             <td>
-                <input type="text" value="${escapeHtml(item.name || '')}" placeholder="Ex: Arroz 5kg" oninput="updateItemField(${idx}, 'name', this.value)" required>
+                <input type="text" value="${escapeHtml(item.name || '')}" placeholder="Ex: Arroz 5kg" oninput="updateItemField(${idx}, 'name', this.value)">
             </td>
             <td>
                 <input type="number" step="0.01" min="0.01" value="${item.quantity}" oninput="updateItemField(${idx}, 'quantity', this.value)" style="text-align: center;">
@@ -2572,17 +2572,22 @@ async function saveTransactionForm(e) {
         return;
     }
 
-    // Filtra itens vazios
-    const validItems = currentTxItems
-        .filter(it => it.name && it.name.trim())
-        .map(it => ({
-            name: it.name.trim(),
-            quantity: parseFloat(it.quantity) || 1.0,
-            unit: it.unit || 'un',
-            unit_price: parseFloat(it.unit_price) || 0.0,
-            total_price: parseFloat(it.total_price) || 0.0,
-            category: it.category || 'Geral'
-        }));
+    // Filtra itens válidos se estiver em modo item a item
+    let validItems = [];
+    if (isIncludeItemsMode && currentTxItems && currentTxItems.length > 0) {
+        validItems = currentTxItems
+            .filter(it => it && it.name && it.name.trim())
+            .map(it => ({
+                name: it.name.trim(),
+                quantity: parseFloat(it.quantity) || 1.0,
+                unit: it.unit || 'un',
+                unit_price: parseFloat(it.unit_price) || 0.0,
+                total_price: parseFloat(it.total_price) || 0.0,
+                category: it.category || 'Geral'
+            }));
+    }
+
+    const hasItemsToSave = Boolean(isIncludeItemsMode && validItems.length > 0);
 
     const payload = {
         workspace_id: workspaceId,
@@ -2595,8 +2600,8 @@ async function saveTransactionForm(e) {
         account_id: accountId,
         date: date,
         receipt_url: receiptUrl,
-        include_items: isIncludeItemsMode,
-        items: isIncludeItemsMode ? validItems : null
+        include_items: hasItemsToSave,
+        items: hasItemsToSave ? validItems : null
     };
 
     const saveBtn = document.getElementById('btnSaveTx');

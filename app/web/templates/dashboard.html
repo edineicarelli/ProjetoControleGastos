@@ -2262,16 +2262,16 @@ body {
 
                     <!-- Seletor de Modo: Item a Item vs Somente Total -->
                     <div class="mode-switch-group">
-                        <button type="button" id="btnModeItems" class="mode-switch-btn active" onclick="setItemsMode(true)">
-                            <span>🛒</span> <span>Incluir Itens Item a Item</span>
-                        </button>
-                        <button type="button" id="btnModeTotalOnly" class="mode-switch-btn" onclick="setItemsMode(false)">
+                        <button type="button" id="btnModeTotalOnly" class="mode-switch-btn active" onclick="setItemsMode(false)">
                             <span>💰</span> <span>Incluir Somente Valor Total</span>
+                        </button>
+                        <button type="button" id="btnModeItems" class="mode-switch-btn" onclick="setItemsMode(true)">
+                            <span>🛒</span> <span>Incluir Itens Item a Item</span>
                         </button>
                     </div>
 
                     <!-- Seção da Tabela de Itens (visível quando modo Item a Item está ativo) -->
-                    <div id="itemsEditorContainer">
+                    <div id="itemsEditorContainer" style="display: none;">
                         <div class="items-table-container">
                             <table class="items-table-edit">
                                 <thead>
