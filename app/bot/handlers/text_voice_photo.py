@@ -879,18 +879,29 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                     return
 
-        # Chama a IA para processar
-        parsed = await ai_service.parse_text(text, user_context)
+        try:
+            # Chama a IA para processar
+            parsed = await ai_service.parse_text(text, user_context)
 
-        # Executa a ação detectada pela IA
-        response_msg, markup = await _apply_parsed_result(db, user, ws, parsed)
+            # Executa a ação detectada pela IA
+            response_msg, markup = await _apply_parsed_result(db, user, ws, parsed)
 
-        await _safe_reply_text(
-            update.message,
-            response_msg,
-            parse_mode="Markdown",
-            reply_markup=markup or get_dashboard_link_keyboard(str(user_tg.id))
-        )
+            await _safe_reply_text(
+                update.message,
+                response_msg,
+                parse_mode="Markdown",
+                reply_markup=markup or get_dashboard_link_keyboard(str(user_tg.id))
+            )
+        except Exception as e:
+            logger.error(f"Erro ao processar mensagem de texto '{text}': {e}", exc_info=True)
+            await _safe_reply_text(
+                update.message,
+                f"❌ *Ocorreu um erro ao processar seu lançamento.*\n\n"
+                f"💡 _Detalhes: {str(e)}_\n\n"
+                f"Por favor, tente novamente ou cadastre pelo Painel Web.",
+                parse_mode="Markdown",
+                reply_markup=get_dashboard_link_keyboard(str(user_tg.id))
+            )
     finally:
         db.close()
 

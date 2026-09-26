@@ -2,8 +2,8 @@ import os
 import subprocess
 from typing import Dict, Any
 
-__version__ = "1.5.1"
-__release_date__ = "24/09/2026"
+__version__ = "1.5.2"
+__release_date__ = "25/09/2026"
 __app_name__ = "Controle Financeiro Inteligente"
 
 def get_git_commit() -> str:

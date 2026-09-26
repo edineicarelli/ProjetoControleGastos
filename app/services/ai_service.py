@@ -140,28 +140,95 @@ class AIService:
 
         return None
 
+    @staticmethod
+    def _extract_amount_br(text: str) -> float:
+        """Extrai valor numérico monetário considerando padrões brasileiros (ex: 2.253,00, 1.500, 45,50, R$ 100)"""
+        # 1. Procura com indicador explícito: R$ 2.253,00 ou no valor de 2.253,00 ou por 2.253,00
+        m = re.search(r'(?:r\$\s*|valor\s*(?:de)?\s*|por\s+)(\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:\.\d{3})+|\d+[.,]\d{1,2}|\d+)', text, re.IGNORECASE)
+        if m:
+            raw = m.group(1).replace('.', '').replace(',', '.')
+            try:
+                val = float(raw)
+                if val > 0:
+                    return val
+            except Exception:
+                pass
+
+        # 2. Número com formato brasileiro de milhares com centavos: 2.253,00 ou 10.500,90
+        m = re.search(r'\b(\d{1,3}(?:\.\d{3})+,\d{2})\b', text)
+        if m:
+            try:
+                return float(m.group(1).replace('.', '').replace(',', '.'))
+            except Exception:
+                pass
+
+        # 3. Formato com vírgula decimal: 2253,00 ou 50,00
+        m = re.search(r'\b(\d+,\d{1,2})\b', text)
+        if m:
+            try:
+                return float(m.group(1).replace(',', '.'))
+            except Exception:
+                pass
+
+        # 4. Formato milhares sem centavos: 2.253 ou 10.000
+        m = re.search(r'\b(\d{1,3}(?:\.\d{3})+)\b', text)
+        if m:
+            try:
+                return float(m.group(1).replace('.', ''))
+            except Exception:
+                pass
+
+        # 5. Formato ponto decimal: 2253.00 ou 50.00
+        m = re.search(r'\b(\d+\.\d{2})\b', text)
+        if m:
+            try:
+                return float(m.group(1))
+            except Exception:
+                pass
+
+        # 6. Inteiro isolado
+        all_ints = re.findall(r'\b(\d+)\b', text)
+        if all_ints:
+            try:
+                return float(all_ints[-1])
+            except Exception:
+                pass
+
+        return 0.0
+
+    @staticmethod
+    def _clean_transaction_description(text: str, is_income: bool = False, cat: str = "Outros") -> str:
+        """Limpa o texto do usuário para extrair apenas a descrição do item ou serviço"""
+        t = text
+        # Remove prefixos comuns de receita / despesa
+        t = re.sub(r'^(?:receita\s+(?:de\s+)?|recebi\s+(?:de\s+)?|ganhei\s+(?:de\s+)?|gastei\s+(?:com\s+|em\s+|no\s+|na\s+)?|comprei\s+|paguei\s+(?:o\s+|a\s+)?|lançamento\s+(?:de\s+)?|lancamento\s+(?:de\s+)?)', '', t, flags=re.IGNORECASE)
+        # Remove sufixos de valor e moeda: 'no valor de 2.253,00', 'valor 2.253,00', 'de r$ 2.253,00', 'r$ 2.253,00', '2.253,00'
+        t = re.sub(r'(?:no\s+valor\s*(?:de)?\s*|valor\s*(?:de)?\s*|por\s+|de\s+)?(?:r\$\s*)?(?:\d{1,3}(?:\.\d{3})*,\d{2}|\d{1,3}(?:\.\d{3})+|\d+[.,]\d{1,2}|\d+)', '', t, flags=re.IGNORECASE)
+        # Remove termos de moeda e conectivos soltos
+        t = re.sub(r'(?i)(?:de\s+)?r\$\s*', '', t)
+        t = re.sub(r'(?i)\b(?:de|no|na|em|para|pra|por)\s*$', '', t)
+        # Remove termos de pagamento no fim com word boundary
+        t = re.sub(r'\b(?:no\s+|na\s+|via\s+|em\s+)?(?:pix|dinheiro|cart[aã]o(?:\s+de\s+cr[eé]dito|\s+de\s+d[eé]bito)?|d[eé]bito|cr[eé]dito|transfer[eê]ncia|ted|doc|boleto)\s*$', '', t, flags=re.IGNORECASE)
+        # Limpa pontuação e espaços
+        t = re.sub(r'\s+', ' ', t).strip(' ,.-')
+        if not t or len(t) < 2:
+            t = cat if cat != 'Outros' else ('Receita' if is_income else 'Despesa')
+        return t.strip().capitalize()
+
     def _is_clean_fast_path(self, text: str) -> bool:
-        """Verifica se a mensagem é um comando financeiro direto e objetivo que pode ser processado instantaneamente"""
+        """Verifica se a mensagem é um comando financeiro ultra direto (ex: 'Almoço 35', 'Gasolina 100 pix')"""
         text_clean = text.strip()
         words = text_clean.split()
-        if len(words) > 12:
-            return False  # Sentenças longas ou conversacionais vão para IA
-
-        # Se tiver interrogação, provavelmente é pergunta que requer IA
-        if "?" in text:
+        if len(words) > 4:
+            return False  # Sentenças mais longas ou conversacionais vão para IA
+        if "?" in text or "," in text or "." in text:
             return False
-
-        # Verifica padrões simples de gasto ou receita: [descrição] [valor] [conta/forma]
-        # Ex: "Almoço 40", "Gasolina 150 dinheiro", "Gastei 50 no mercado", "Recebi 1200 freela pix", "Salário 5000"
-        has_number = bool(re.search(r"\d+(?:[.,]\d{1,2})?", text))
-        if not has_number:
-            return False
-
-        return True
+        # Padrões estritos tipo: [Palavra Simples] [Número Inteiro] [Forma Opcional]
+        return bool(re.match(r"^[a-zA-ZÀ-ÿ]{2,20}\s+\d{1,6}(?:\s+(?:pix|dinheiro|debito|débito|credito|crédito|cartao|cartão))?$", text_clean, re.IGNORECASE))
 
     async def parse_text(self, text: str, user_context: Optional[Dict[str, Any]] = None) -> AIParsedResult:
         """Analisa mensagem de texto usando Fast-Path instantâneo ou Gemini ultra-rápido com fallback"""
-        # 1. Tenta Fast-Path local para resposta em < 5ms em comandos simples e objetivos
+        # 1. Tenta Fast-Path local para resposta em < 5ms apenas em comandos ultra simples e objetivos
         if self._is_clean_fast_path(text):
             try:
                 fast_result = self._fallback_parse_text(text)
@@ -183,6 +250,7 @@ class AIService:
                     logger.error(f"Erro ao validar schema do Gemini: {e}")
 
         return self._fallback_parse_text(text)
+
 
     async def parse_audio(self, audio_file_path: str, user_context: Optional[Dict[str, Any]] = None) -> AIParsedResult:
         """Analisa arquivo de áudio de voz do Telegram enviando como dado base64 inline"""
@@ -471,9 +539,7 @@ class AIService:
         ]) or (("pix" in text_lower or "mandei" in text_lower or "passei" in text_lower) and any(p in text_lower for p in [" pro ", " para ", " pra ", " p/ "]))
 
         if is_transfer:
-            val_match = re.search(r"(?:r\$\s*|valor\s*(?:de)?\s*|de\s*)?(\d+(?:[.,]\d{1,2})?)", text_lower)
-            all_nums = re.findall(r"(\d+(?:[.,]\d{1,2})?)", text)
-            valor = float(all_nums[-1].replace(",", ".")) if all_nums else 0.0
+            valor = self._extract_amount_br(text)
 
             known_banks = ["banco do brasil", "santander", "nubank", "caixa", "itaú", "itau", "inter", "bradesco", "poupança", "poupanca", "dinheiro", "carteira", "especie", "bb", "nu"]
             
@@ -506,7 +572,6 @@ class AIService:
                     from_acc = found_banks[0].title()
                     to_acc = "Dinheiro"
 
-
             return AIParsedResult(
                 intent="account_transfer",
                 transfer=ExtractedTransfer(
@@ -524,16 +589,7 @@ class AIService:
             km_match = re.search(r"(?:km\s*)?(\d{4,6})(?:\s*km)?", text_lower)
             km_val = float(km_match.group(1)) if km_match else 0.0
 
-            # Extrai valor em dinheiro (ex: "876,50", "valor de 300", "r$ 250")
-            val_match = re.search(r"(?:r\$\s*|valor\s*(?:de)?\s*|por\s*)(\d+(?:[.,]\d{1,2})?)", text_lower)
-            if not val_match:
-                # Procura número decimal ou número diferente do KM
-                all_nums = re.findall(r"(\d+(?:[.,]\d{1,2})?)", text)
-                nums_float = [float(n.replace(",", ".")) for n in all_nums]
-                val_candidates = [n for n in nums_float if n != km_val and n < 50000]
-                valor = val_candidates[-1] if val_candidates else 0.0
-            else:
-                valor = float(val_match.group(1).replace(",", "."))
+            valor = self._extract_amount_br(text)
 
             return AIParsedResult(
                 intent="vehicle_action",
@@ -550,8 +606,7 @@ class AIService:
         # 4. Metas e Caixinhas (Criar, Adicionar, Guardar)
         if any(w in text_lower for w in ["meta", "caixinha", "guardar", "guardei", "depositei", "reservei"]):
             is_create = any(w in text_lower for w in ["nova meta", "adicionar meta", "adiciona meta", "criar meta"])
-            val_match = re.search(r"(\d+(?:[.,]\d{1,2})?)", text)
-            valor = float(val_match.group(1).replace(",", ".")) if val_match else 0.0
+            valor = self._extract_amount_br(text)
 
             # Nome da meta
             nome_meta = "Reserva"
@@ -581,14 +636,9 @@ class AIService:
         ])
 
         if is_tx_edit_keyword and not is_reminder_term:
-            # Extrai novo valor se informado
-            new_val = None
-            val_match = re.search(r"(?:para\s*(?:r\$\s*)?|r\$\s*)(\d+(?:[.,]\d{1,2})?)", text_lower)
-            if val_match:
-                try:
-                    new_val = float(val_match.group(1).replace(",", "."))
-                except Exception:
-                    pass
+            new_val = self._extract_amount_br(text)
+            if new_val <= 0:
+                new_val = None
 
             # Extrai nova data se informada
             now = datetime.now()
@@ -670,12 +720,9 @@ class AIService:
             # Extrai novo valor se informado
             new_amount_val = None
             if "valor" in text_lower or "r$" in text_lower or "reais" in text_lower:
-                val_m = re.search(r"(?:para\s*(?:r\$\s*)?|r\$\s*)(\d+(?:[.,]\d{1,2})?)", text_lower)
-                if val_m:
-                    try:
-                        new_amount_val = float(val_m.group(1).replace(",", "."))
-                    except Exception:
-                        pass
+                val_extracted = self._extract_amount_br(text)
+                if val_extracted > 0:
+                    new_amount_val = val_extracted
 
             # Extrai nome da conta / termo de busca
             title = "Conta"
@@ -701,14 +748,7 @@ class AIService:
             dia_match = re.search(r"(?:dia\s*)(\d{1,2})", text_lower)
             dia = int(dia_match.group(1)) if dia_match else datetime.now().day
 
-            # Extrai valor
-            val_match = re.search(r"(?:valor\s*(?:de)?\s*|r\$\s*)(\d+(?:[.,]\d{1,2})?)", text_lower)
-            if not val_match:
-                all_nums = [float(n.replace(",", ".")) for n in re.findall(r"(\d+(?:[.,]\d{1,2})?)", text)]
-                val_candidates = [n for n in all_nums if int(n) != dia]
-                valor = val_candidates[0] if val_candidates else 0.0
-            else:
-                valor = float(val_match.group(1).replace(",", "."))
+            valor = self._extract_amount_br(text)
 
             # Nome da conta
             title = "Conta Agendada"
@@ -733,11 +773,14 @@ class AIService:
                 friendly_response=f"⏰ *Lembrete Cadastrado!*\n📝 *{title}*\n💰 Valor: *{format_currency_br(valor)}*\n📅 Vencimento: *{dia:02d}/{mes:02d}*{' (Recorrente mensal)' if is_monthly else ''}."
             )
 
-        # 6. Despesas e Receitas comuns
-        all_nums = re.findall(r"(\d+(?:[.,]\d{1,2})?)", text)
-        if all_nums:
-            valor = float(all_nums[-1].replace(",", "."))
-            is_income = any(w in text_lower for w in ["recebi", "ganhei", "salário", "salario", "freela", "pix recebido", "venda", "entrada"])
+        # 8. Despesas e Receitas comuns
+        valor = self._extract_amount_br(text)
+        if valor > 0:
+            is_income = any(w in text_lower for w in [
+                "recebi", "ganhei", "salário", "salario", "freela", "pix recebido", "venda", "vendas", "entrada", "entradas",
+                "receita", "receitas", "honorario", "honorário", "prestação de serviço", "prestacao de servico",
+                "serviço", "servico", "faturamento", "rendimento", "pro-labore", "comissão", "comissao"
+            ])
 
             cat = "Outros"
             if any(w in text_lower for w in ["almoço", "almoco", "jantar", "lanche", "mercado", "padaria", "comida", "pizza", "hamburguer", "restaurante"]):
@@ -749,7 +792,14 @@ class AIService:
             elif any(w in text_lower for w in ["farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "dentista", "consulta"]):
                 cat = "Saúde"
             elif is_income:
-                cat = "Salário" if ("salario" in text_lower or "salário" in text_lower) else "Receitas"
+                if any(w in text_lower for w in ["salario", "salário"]):
+                    cat = "Salário"
+                elif any(w in text_lower for w in ["serviço", "servico", "prestação", "prestacao", "freela", "honorario", "honorário"]):
+                    cat = "Freelas & Extras"
+                elif any(w in text_lower for w in ["venda", "vendas"]):
+                    cat = "Vendas"
+                else:
+                    cat = "Outras Receitas"
 
             pagamento = "Pix"
             if "credito" in text_lower or "crédito" in text_lower:
@@ -761,6 +811,7 @@ class AIService:
 
             offset = -1 if "ontem" in text_lower else 0
             tipo_icon = "🟢 Entrada" if is_income else "🔴 Saída"
+            desc = self._clean_transaction_description(text, is_income, cat)
 
             return AIParsedResult(
                 intent="transaction_record",
@@ -768,13 +819,13 @@ class AIService:
                     ExtractedTransaction(
                         type="income" if is_income else "expense",
                         amount=valor,
-                        description=text.capitalize(),
+                        description=desc,
                         category_name=cat,
                         payment_method=pagamento,
                         date_offset_days=offset
                     )
                 ],
-                friendly_response=f"{tipo_icon}: *{format_currency_br(valor)}* ({cat}) via *{pagamento}* registrado com sucesso!"
+                friendly_response=f"{tipo_icon}: *{format_currency_br(valor)}* ({desc}) via *{pagamento}* registrado com sucesso!"
             )
 
         return AIParsedResult(
