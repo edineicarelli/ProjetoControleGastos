@@ -78,8 +78,60 @@ def seed():
             items=pharma_items
         )
 
+        # Transação de Combustível com itens detalhados (Litros e preço)
+        fuel_shell_items = [
+            {"name": "Gasolina Comum", "quantity": 30.56, "unit": "l", "unit_price": 5.89, "total_price": 180.00, "category": "Combustível"}
+        ]
+        FinanceService.add_transaction(
+            db=db,
+            workspace_id=ws_pf.id,
+            user_id=user.id,
+            type="expense",
+            amount=180.0,
+            description="Combustível Posto Shell",
+            category_name="Transporte",
+            payment_method="Cartão de Débito",
+            transaction_date=now - datetime.timedelta(days=3),
+            items=fuel_shell_items
+        )
+
+        fuel_ipiranga_items = [
+            {"name": "Gasolina Comum", "quantity": 25.91, "unit": "l", "unit_price": 5.79, "total_price": 150.00, "category": "Combustível"}
+        ]
+        FinanceService.add_transaction(
+            db=db,
+            workspace_id=ws_pf.id,
+            user_id=user.id,
+            type="expense",
+            amount=150.0,
+            description="Abastecimento Posto Ipiranga",
+            category_name="Transporte",
+            payment_method="Pix",
+            transaction_date=now - datetime.timedelta(days=8),
+            items=fuel_ipiranga_items
+        )
+
+        # Transação de Loja de Tintas & Construção com itens
+        paint_items = [
+            {"name": "Tinta Acrílica Suvinil Fosca 18L", "quantity": 1.0, "unit": "lata", "unit_price": 389.90, "total_price": 389.90, "category": "Tintas & Pintura"},
+            {"name": "Massa Corrida Coral 25kg", "quantity": 1.0, "unit": "cx", "unit_price": 64.90, "total_price": 64.90, "category": "Massas & Selantes"},
+            {"name": "Rolo de Lã Atlas 23cm", "quantity": 2.0, "unit": "un", "unit_price": 28.50, "total_price": 57.00, "category": "Acessórios de Pintura"}
+        ]
+        paint_total = round(sum(it["total_price"] for it in paint_items), 2)
+        FinanceService.add_transaction(
+            db=db,
+            workspace_id=ws_pf.id,
+            user_id=user.id,
+            type="expense",
+            amount=paint_total,
+            description="Tintas Darka - Reforma Casa",
+            category_name="Materiais E Construção",
+            payment_method="Cartão de Crédito",
+            transaction_date=now - datetime.timedelta(days=6),
+            items=paint_items
+        )
+
         FinanceService.add_transaction(db, ws_pf.id, user.id, "expense", 85.50, "Jantar Restaurante", "Alimentação", "Cartão de Débito", now - datetime.timedelta(days=1))
-        FinanceService.add_transaction(db, ws_pf.id, user.id, "expense", 180.0, "Combustível Posto Shell", "Transporte", "Cartão de Débito", now - datetime.timedelta(days=3))
         FinanceService.add_transaction(db, ws_pf.id, user.id, "expense", 120.0, "Internet Fibra", "Moradia", "Boleto", now - datetime.timedelta(days=4))
 
 

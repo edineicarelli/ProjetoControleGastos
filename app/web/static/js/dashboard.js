@@ -2731,15 +2731,31 @@ async function confirmDeleteItemsKeepTotal() {
 }
 
 /* ==========================================================================
-   Central de Análise de Itens & Mercado
+   Central de Análise de Itens & Inteligência de Compras por Categoria
    ========================================================================== */
 
-// ==========================================================================
-// Módulo de Inteligência de Mercado, Rankings & Comparador de Preços
-// ==========================================================================
 let currentItemRankingSort = 'spent';
+let selectedItemAnalyticsCategory = 'all';
 let allPriceComparisonsCache = [];
 let priceLookupTimeout = null;
+
+function selectItemAnalyticsCategory(categoryKey) {
+    selectedItemAnalyticsCategory = categoryKey || 'all';
+
+    // Atualiza botões visuais
+    const nav = document.getElementById('itemCategorySegmentNav');
+    if (nav) {
+        nav.querySelectorAll('.segment-pill-btn').forEach(btn => {
+            if (btn.getAttribute('data-category') === selectedItemAnalyticsCategory) {
+                btn.classList.add('active');
+            } else {
+                btn.classList.remove('active');
+            }
+        });
+    }
+
+    loadMarketAnalyticsData();
+}
 
 async function loadMarketAnalyticsData() {
     const workspaceId = window.currentWorkspaceId || 1;
@@ -2751,39 +2767,102 @@ async function loadMarketAnalyticsData() {
     params.set('workspace_id', workspaceId);
     if (year) params.set('year', year);
     if (month) params.set('month', month);
+    if (selectedItemAnalyticsCategory && selectedItemAnalyticsCategory !== 'all') {
+        params.set('category', selectedItemAnalyticsCategory);
+    }
+
+    const rankingParams = new URLSearchParams();
+    rankingParams.set('workspace_id', workspaceId);
+    rankingParams.set('sort_by', currentItemRankingSort);
+    if (year) rankingParams.set('year', year);
+    if (month) rankingParams.set('month', month);
+    if (selectedItemAnalyticsCategory && selectedItemAnalyticsCategory !== 'all') {
+        rankingParams.set('category', selectedItemAnalyticsCategory);
+    }
+
+    const compParams = new URLSearchParams();
+    compParams.set('workspace_id', workspaceId);
+    if (selectedItemAnalyticsCategory && selectedItemAnalyticsCategory !== 'all') {
+        compParams.set('category', selectedItemAnalyticsCategory);
+    }
 
     try {
-        // 1. Carrega Estatísticas Básicas e Categorias
+        // Carrega simultaneamente as análises de itens, ranking e comparador de preços
         const [resAnalytics, resRanking, resComparisons] = await Promise.all([
             fetch(`/api/analytics/items?${params.toString()}`),
-            fetch(`/api/market/ranking?workspace_id=${workspaceId}&sort_by=${currentItemRankingSort}${year ? '&year='+year : ''}${month ? '&month='+month : ''}`),
-            fetch(`/api/market/compare-prices?workspace_id=${workspaceId}`)
+            fetch(`/api/market/ranking?${rankingParams.toString()}`),
+            fetch(`/api/market/compare-prices?${compParams.toString()}`)
         ]);
+
+        let activeMeta = null;
 
         if (resAnalytics.ok) {
             const data = await resAnalytics.json();
+            activeMeta = data.active_segment;
+
+            // Atualiza contadores dos pills de categorias
+            if (data.segments_summary && Array.isArray(data.segments_summary)) {
+                data.segments_summary.forEach(seg => {
+                    const countEl = document.getElementById(
+                        seg.key === 'all' ? 'catCountAll' :
+                        seg.key === 'mercado' ? 'catCountMercado' :
+                        seg.key === 'combustivel' ? 'catCountCombustivel' :
+                        seg.key === 'tintas_reforma' ? 'catCountTintas' :
+                        seg.key === 'farmacia' ? 'catCountFarmacia' :
+                        seg.key === 'veicular' ? 'catCountVeicular' :
+                        'catCountOutros'
+                    );
+                    if (countEl) countEl.textContent = seg.count || 0;
+                });
+
+                // Renderiza barra de distribuição de gastos por categoria
+                renderCategoryDistributionBar(data.segments_summary, data.segments_summary.find(s => s.key === 'all')?.total_spent || 0);
+            }
+
+            // Indicador de categoria ativa
+            const indBadge = document.getElementById('activeCategoryBadgeIndicator');
+            if (indBadge && activeMeta) {
+                indBadge.innerHTML = `${activeMeta.icon} Exibindo: <b>${escapeHtml(activeMeta.name)}</b>`;
+                indBadge.style.color = activeMeta.color;
+                indBadge.style.borderColor = `${activeMeta.color}66`;
+                indBadge.style.background = `${activeMeta.color}18`;
+            }
+
+            // KPIs
             const totalItemsEl = document.getElementById('analyticsTotalItems');
             const totalSpentEl = document.getElementById('analyticsTotalSpent');
             const totalCategoriesEl = document.getElementById('analyticsTotalCategories');
+            const spentLabelEl = document.getElementById('analyticsSpentLabel');
+            const itemsLabelEl = document.getElementById('analyticsItemsLabel');
+            const iconItemsEl = document.getElementById('analyticsKpiIconItems');
+            const iconSpentEl = document.getElementById('analyticsKpiIconSpent');
 
             if (totalItemsEl) totalItemsEl.textContent = data.total_items_count || 0;
             if (totalSpentEl) totalSpentEl.textContent = Number(data.total_spent_on_items || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
             if (totalCategoriesEl) totalCategoriesEl.textContent = (data.categories || []).length;
 
-            // Categorias
+            if (activeMeta) {
+                if (spentLabelEl) spentLabelEl.textContent = activeMeta.kpi_spent_label || 'Total Gasto';
+                if (itemsLabelEl) itemsLabelEl.textContent = selectedItemAnalyticsCategory === 'all' ? 'Produtos / Itens Registrados' : `Itens de ${activeMeta.name}`;
+                if (iconItemsEl) iconItemsEl.textContent = activeMeta.icon;
+            }
+
+            // Subcategorias
             const topCatContainer = document.getElementById('topCategoriesList');
             if (topCatContainer) {
                 const catList = data.categories || [];
                 if (catList.length === 0) {
-                    topCatContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Nenhuma categoria registrada no período.</div>`;
+                    topCatContainer.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Nenhuma subcategoria registrada no período.</div>`;
                 } else {
                     const maxCatSpent = catList[0]?.total_spent || 1;
                     topCatContainer.innerHTML = catList.map((cat, idx) => {
                         const pct = Math.min(100, Math.round((cat.total_spent / maxCatSpent) * 100));
                         const itemsArr = cat.items_list || [];
+                        const bColor = cat.badge_color || '#10b981';
+                        const bIcon = cat.icon || '🏷️';
                         const itemsListHtml = itemsArr.length > 0 ? `
                             <div class="tooltip-items-list">
-                                <div style="font-weight: 700; color: #94a3b8; font-size: 0.72rem; margin-bottom: 0.2rem;">🛍️ Itens da Categoria:</div>
+                                <div style="font-weight: 700; color: #94a3b8; font-size: 0.72rem; margin-bottom: 0.2rem;">🛍️ Itens da Subcategoria:</div>
                                 ${itemsArr.slice(0, 6).map(it => `
                                     <div class="tooltip-item-pill">
                                         <span>${escapeHtml(it.name)} (${it.total_quantity} ${it.unit || ''})</span>
@@ -2798,25 +2877,25 @@ async function loadMarketAnalyticsData() {
                             <div class="ranking-item">
                                 <div class="ranking-header-row">
                                     <div class="ranking-title-group">
-                                        <div class="ranking-rank" style="background: rgba(16, 185, 129, 0.2); color: #34d399;">🏷️</div>
+                                        <div class="ranking-rank" style="background: ${bColor}25; color: ${bColor};">${bIcon}</div>
                                         <div class="ranking-name" title="${escapeHtml(cat.category)}">${escapeHtml(cat.category)}</div>
                                     </div>
                                     <div class="ranking-amount">${Number(cat.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
                                 </div>
                                 <div class="ranking-bar-wrap">
-                                    <div class="ranking-bar-fill" style="width: ${pct}%; background: linear-gradient(90deg, #10b981, #06b6d4);"></div>
+                                    <div class="ranking-bar-fill" style="width: ${pct}%; background: linear-gradient(90deg, ${bColor}, #06b6d4);"></div>
                                 </div>
                                 <div class="ranking-sub-row">
-                                    <span>${cat.items_count} produtos no período</span>
+                                    <span>${cat.items_count} itens no período</span>
                                 </div>
                                 <div class="ranking-tooltip">
                                     <div class="tooltip-header">
-                                        <span>🏷️</span>
+                                        <span>${bIcon}</span>
                                         <div class="tooltip-title">${escapeHtml(cat.category)}</div>
                                     </div>
                                     <div class="tooltip-body">
                                         <div class="tooltip-row"><span>Total Gasto:</span> <b>${Number(cat.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</b></div>
-                                        <div class="tooltip-row"><span>Produtos Distintos:</span> <b>${cat.items_count} itens</b></div>
+                                        <div class="tooltip-row"><span>Itens Distintos:</span> <b>${cat.items_count}</b></div>
                                         ${itemsListHtml}
                                     </div>
                                 </div>
@@ -2831,26 +2910,81 @@ async function loadMarketAnalyticsData() {
             renderItemsHistoryTable(allItemsHistoryCache);
         }
 
-        // 2. Renderiza Ranking de Produtos e Mercados
+        // 2. Renderiza Ranking de Produtos e Estabelecimentos
         if (resRanking.ok) {
             const rankingData = await resRanking.json();
             renderTopConsumedItems(rankingData.top_items || []);
             renderSupermarketRanking(rankingData.top_stores || []);
 
             const totalStoresEl = document.getElementById('analyticsTotalStores');
+            const storesLabelEl = document.getElementById('analyticsStoresLabel');
+            const storesFooterEl = document.getElementById('analyticsStoresFooter');
+            const topProductsTitleEl = document.getElementById('topProductsTitle');
+            const topStoresTitleEl = document.getElementById('topStoresTitle');
+
             if (totalStoresEl) totalStoresEl.textContent = (rankingData.top_stores || []).length;
+
+            if (activeMeta) {
+                if (storesLabelEl) storesLabelEl.textContent = activeMeta.kpi_stores_label || 'Estabelecimentos';
+                if (storesFooterEl) storesFooterEl.textContent = activeMeta.store_label || 'Locais visitados';
+                if (topProductsTitleEl) topProductsTitleEl.textContent = activeMeta.products_title || '🏆 Produtos Mais Consumidos';
+                if (topStoresTitleEl) topStoresTitleEl.textContent = activeMeta.store_title || '🏪 Onde Você Mais Gasta';
+            }
         }
 
-        // 3. Renderiza Comparador de Preços entre Supermercados
+        // 3. Renderiza Comparador de Preços entre Estabelecimentos
         if (resComparisons.ok) {
             const compData = await resComparisons.json();
             allPriceComparisonsCache = compData.comparisons || [];
             renderPriceComparisonTable(allPriceComparisonsCache);
+
+            const compTitleEl = document.getElementById('priceCompareTitle');
+            if (compTitleEl && activeMeta) {
+                compTitleEl.textContent = activeMeta.comparison_title || 'Comparador de Preços entre Estabelecimentos';
+            }
         }
 
     } catch (err) {
-        console.error('Erro ao carregar inteligência de mercado:', err);
+        console.error('Erro ao carregar inteligência de mercado por categoria:', err);
     }
+}
+
+function renderCategoryDistributionBar(segments, totalSpent) {
+    const bar = document.getElementById('categoryDistBar');
+    const legend = document.getElementById('categoryDistLegend');
+    if (!bar || !legend) return;
+
+    if (!segments || segments.length === 0 || totalSpent <= 0) {
+        bar.innerHTML = `<div class="category-dist-segment" style="width: 100%; background: rgba(255,255,255,0.08);"></div>`;
+        legend.innerHTML = `<span style="color: var(--text-muted); font-size: 0.78rem;">Nenhum item discriminado no período.</span>`;
+        return;
+    }
+
+    const validSegs = segments.filter(s => s.key !== 'all' && s.total_spent > 0);
+    if (validSegs.length === 0) {
+        bar.innerHTML = `<div class="category-dist-segment" style="width: 100%; background: rgba(255,255,255,0.08);"></div>`;
+        legend.innerHTML = `<span style="color: var(--text-muted); font-size: 0.78rem;">Nenhum item discriminado no período.</span>`;
+        return;
+    }
+
+    bar.innerHTML = validSegs.map(s => `
+        <div class="category-dist-segment" style="width: ${s.pct_of_total}%; background: ${s.color};" title="${s.icon} ${escapeHtml(s.name)}: ${Number(s.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${s.pct_of_total}%)"></div>
+    `).join('');
+
+    legend.innerHTML = validSegs.map(s => {
+        const isSelected = selectedItemAnalyticsCategory === s.key;
+        return `
+            <div class="category-dist-legend-item" onclick="selectItemAnalyticsCategory('${s.key}')" style="${isSelected ? 'background: rgba(255,255,255,0.08); font-weight: 700;' : ''}" title="Filtrar categoria ${escapeHtml(s.name)}">
+                <span class="category-dist-legend-dot" style="background: ${s.color};"></span>
+                <span>${s.icon} <b>${escapeHtml(s.name)}:</b> ${Number(s.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} (${s.pct_of_total}%)</span>
+            </div>
+        `;
+    }).join('') + `
+        <div class="category-dist-legend-item" onclick="selectItemAnalyticsCategory('all')" style="${selectedItemAnalyticsCategory === 'all' ? 'background: rgba(255,255,255,0.08); font-weight: 700;' : ''}" title="Ver todos os itens">
+            <span class="category-dist-legend-dot" style="background: #6366f1;"></span>
+            <span>🌟 <b>Ver Todos</b></span>
+        </div>
+    `;
 }
 
 function switchItemRankingSort(sortBy) {
@@ -2874,7 +3008,7 @@ function renderTopConsumedItems(items) {
     if (!container) return;
 
     if (!items || items.length === 0) {
-        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Nenhum produto cadastrado no período.</div>`;
+        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Nenhum produto cadastrado no período ou categoria.</div>`;
         return;
     }
 
@@ -2885,8 +3019,10 @@ function renderTopConsumedItems(items) {
         const val = isSpent ? item.total_spent : item.total_quantity;
         const pct = Math.min(100, Math.round((val / maxVal) * 100));
         const rankClass = idx === 0 ? 'top-1' : (idx === 1 ? 'top-2' : (idx === 2 ? 'top-3' : ''));
-        const storesText = item.stores_count > 1 ? `🏪 ${item.stores_count} mercados` : `🏪 ${escapeHtml(item.last_store)}`;
+        const storesText = item.stores_count > 1 ? `🏪 ${item.stores_count} locais` : `🏪 ${escapeHtml(item.last_store)}`;
         const storesListStr = (item.stores_list || []).join(', ') || item.last_store;
+        const bColor = item.badge_color || '#6366f1';
+        const bIcon = item.icon || '🛍️';
 
         return `
             <div class="ranking-item">
@@ -2895,10 +3031,15 @@ function renderTopConsumedItems(items) {
                         <div class="ranking-rank ${rankClass}">${idx + 1}</div>
                         <div class="ranking-name" title="${escapeHtml(item.name)}">${escapeHtml(item.name)}</div>
                     </div>
-                    <div class="ranking-amount">${Number(item.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                        <span class="item-category-tag" style="background: ${bColor}20; color: ${bColor}; border: 1px solid ${bColor}45;">
+                            ${bIcon} ${escapeHtml(item.category || 'Geral')}
+                        </span>
+                        <div class="ranking-amount">${Number(item.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                    </div>
                 </div>
                 <div class="ranking-bar-wrap">
-                    <div class="ranking-bar-fill" style="width: ${pct}%;"></div>
+                    <div class="ranking-bar-fill" style="width: ${pct}%; background: linear-gradient(90deg, ${bColor}, #38bdf8);"></div>
                 </div>
                 <div class="ranking-sub-row">
                     <span>${item.total_quantity} ${item.unit} • Médio ${Number(item.avg_unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
@@ -2906,10 +3047,10 @@ function renderTopConsumedItems(items) {
                 </div>
                 <div class="ranking-tooltip">
                     <div class="tooltip-header">
-                        <span>🛒</span>
+                        <span>${bIcon}</span>
                         <div class="tooltip-title">${escapeHtml(item.name)}</div>
                     </div>
-                    <div class="tooltip-badge-cat">🏷️ ${escapeHtml(item.category || 'Geral')}</div>
+                    <div class="tooltip-badge-cat" style="color: ${bColor};">🏷️ ${escapeHtml(item.category || 'Geral')} (${escapeHtml(item.segment_name || '')})</div>
                     <div class="tooltip-body">
                         <div class="tooltip-row"><span>Total Gasto:</span> <b>${Number(item.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</b></div>
                         <div class="tooltip-row"><span>Volume Total:</span> <b>${item.total_quantity} ${item.unit}</b></div>
@@ -2928,7 +3069,7 @@ function renderSupermarketRanking(stores) {
     if (!container) return;
 
     if (!stores || stores.length === 0) {
-        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Nenhum supermercado registrado ainda.</div>`;
+        container.innerHTML = `<div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Nenhum estabelecimento registrado nesta categoria.</div>`;
         return;
     }
 
@@ -2938,6 +3079,8 @@ function renderSupermarketRanking(stores) {
         const pct = Math.min(100, Math.round((s.total_spent / maxSpent) * 100));
         const rankClass = idx === 0 ? 'top-1' : (idx === 1 ? 'top-2' : (idx === 2 ? 'top-3' : ''));
         const itemsArr = s.items_list || [];
+        const bColor = s.badge_color || '#6366f1';
+        const bIcon = s.icon || '🏪';
         const itemsListHtml = itemsArr.length > 0 ? `
             <div class="tooltip-items-list">
                 <div style="font-weight: 700; color: #94a3b8; font-size: 0.72rem; margin-bottom: 0.2rem;">🛍️ Itens Comprados no Local:</div>
@@ -2958,24 +3101,29 @@ function renderSupermarketRanking(stores) {
                         <div class="ranking-rank ${rankClass}">${idx + 1}</div>
                         <div class="ranking-name" title="${escapeHtml(s.store_name)}">${escapeHtml(s.store_name)}</div>
                     </div>
-                    <div class="ranking-amount">${Number(s.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0;">
+                        <span class="item-category-tag" style="background: ${bColor}20; color: ${bColor}; border: 1px solid ${bColor}45;">
+                            ${bIcon} ${escapeHtml(s.segment_name || 'Geral')}
+                        </span>
+                        <div class="ranking-amount">${Number(s.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</div>
+                    </div>
                 </div>
                 <div class="ranking-bar-wrap">
-                    <div class="ranking-bar-fill" style="width: ${pct}%; background: linear-gradient(90deg, #6366f1, #ec4899);"></div>
+                    <div class="ranking-bar-fill" style="width: ${pct}%; background: linear-gradient(90deg, ${bColor}, #ec4899);"></div>
                 </div>
                 <div class="ranking-sub-row">
-                    <span>${s.transaction_count} compras • Ticket Médio ${Number(s.avg_ticket).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
-                    <span style="color: #cbd5e1;">${s.last_visit ? 'Visita: ' + s.last_visit : ''}</span>
+                    <span>${s.transaction_count} lançamentos • Ticket Médio ${Number(s.avg_ticket).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</span>
+                    <span style="color: #cbd5e1;">${s.last_visit ? 'Último: ' + s.last_visit : ''}</span>
                 </div>
                 <div class="ranking-tooltip">
                     <div class="tooltip-header">
-                        <span>🏪</span>
+                        <span>${bIcon}</span>
                         <div class="tooltip-title">${escapeHtml(s.store_name)}</div>
                     </div>
                     <div class="tooltip-body">
                         <div class="tooltip-row"><span>Total Gasto:</span> <b>${Number(s.total_spent).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</b></div>
-                        <div class="tooltip-row"><span>Compras Realizadas:</span> <b>${s.transaction_count} (Médio ${Number(s.avg_ticket).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</b></div>
-                        <div class="tooltip-row"><span>Última Visita:</span> <b>${s.last_visit || 'N/A'}</b></div>
+                        <div class="tooltip-row"><span>Lançamentos / Compras:</span> <b>${s.transaction_count} (Médio ${Number(s.avg_ticket).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})</b></div>
+                        <div class="tooltip-row"><span>Último Registro:</span> <b>${s.last_visit || 'N/A'}</b></div>
                         ${itemsListHtml}
                     </div>
                 </div>
@@ -2992,7 +3140,7 @@ function renderPriceComparisonTable(comparisons) {
         tbody.innerHTML = `
             <tr>
                 <td colspan="6" style="text-align: center; color: var(--text-muted); padding: 2rem;">
-                    Nenhum produto cadastrado para comparação de preços. Envie cupons de diferentes mercados para analisar!
+                    Nenhum produto cadastrado para comparação de preços nesta categoria.
                 </td>
             </tr>
         `;
@@ -3003,6 +3151,8 @@ function renderPriceComparisonTable(comparisons) {
         const cheapest = prod.cheapest_store;
         const mostExp = prod.most_expensive_store;
         const hasDiff = prod.has_multi_store_comparison && mostExp;
+        const bColor = prod.badge_color || '#6366f1';
+        const bIcon = prod.icon || '🛍️';
 
         let diffBadge = '';
         if (hasDiff && prod.diff_pct > 0) {
@@ -3012,7 +3162,7 @@ function renderPriceComparisonTable(comparisons) {
                         +${prod.diff_pct}% (+${Number(prod.price_diff).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })})
                     </span>
                     <small style="display: block; color: #34d399; font-size: 0.72rem; margin-top: 0.15rem;">
-                        Economize no ${escapeHtml(cheapest.store_name)}
+                        Mais barato no ${escapeHtml(cheapest.store_name)}
                     </small>
                 </div>
             `;
@@ -3037,7 +3187,11 @@ function renderPriceComparisonTable(comparisons) {
                 <td style="font-weight: 700; color: #fff;">
                     ${escapeHtml(prod.product_name)}
                 </td>
-                <td><span class="category-tag">${escapeHtml(prod.category || 'Geral')}</span></td>
+                <td>
+                    <span class="item-category-tag" style="background: ${bColor}20; color: ${bColor}; border: 1px solid ${bColor}45;">
+                        ${bIcon} ${escapeHtml(prod.category || prod.segment_name || 'Geral')}
+                    </span>
+                </td>
                 <td>
                     <div style="display: flex; flex-direction: column;">
                         <strong style="color: #34d399; font-size: 0.95rem;">
@@ -3091,28 +3245,36 @@ function renderItemsHistoryTable(items) {
         tbody.innerHTML = `
             <tr>
                 <td colspan="7" style="text-align: center; color: var(--text-muted); padding: 2rem;">
-                    Nenhum item encontrado no histórico deste período.
+                    Nenhum item encontrado no histórico para a categoria selecionada.
                 </td>
             </tr>
         `;
         return;
     }
 
-    tbody.innerHTML = items.map(it => `
-        <tr>
-            <td>${it.transaction_date}</td>
-            <td style="font-weight: 500;">
-                <a href="javascript:void(0)" onclick="openTransactionItemsModal(${it.transaction_id})" style="color: #818cf8; text-decoration: none;">
-                    ${escapeHtml(it.transaction_desc || 'Compra')}
-                </a>
-            </td>
-            <td style="font-weight: 600; color: #fff;">${escapeHtml(it.name)}</td>
-            <td><span class="category-tag">${escapeHtml(it.category || 'Geral')}</span></td>
-            <td style="text-align: center;">${it.quantity} ${it.unit}</td>
-            <td style="text-align: right; color: var(--text-secondary);">${Number(it.unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-            <td style="text-align: right; font-weight: 700; color: #fff;">${Number(it.total_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
-        </tr>
-    `).join('');
+    tbody.innerHTML = items.map(it => {
+        const bColor = it.badge_color || '#6366f1';
+        const bIcon = it.icon || '🏷️';
+        return `
+            <tr>
+                <td>${it.transaction_date}</td>
+                <td style="font-weight: 500;">
+                    <a href="javascript:void(0)" onclick="openTransactionItemsModal(${it.transaction_id})" style="color: #818cf8; text-decoration: none;">
+                        ${escapeHtml(it.transaction_desc || 'Compra')}
+                    </a>
+                </td>
+                <td style="font-weight: 600; color: #fff;">${escapeHtml(it.name)}</td>
+                <td>
+                    <span class="item-category-tag" style="background: ${bColor}20; color: ${bColor}; border: 1px solid ${bColor}45;">
+                        ${bIcon} ${escapeHtml(it.category || it.segment_name || 'Geral')}
+                    </span>
+                </td>
+                <td style="text-align: center;">${it.quantity} ${it.unit}</td>
+                <td style="text-align: right; color: var(--text-secondary);">${Number(it.unit_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+                <td style="text-align: right; font-weight: 700; color: #fff;">${Number(it.total_price).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}</td>
+            </tr>
+        `;
+    }).join('');
 }
 
 function filterItemsHistoryTable(query) {

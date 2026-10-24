@@ -673,32 +673,49 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text(receipt_text, parse_mode="Markdown", reply_markup=reply_markup)
             return
 
-        # Comando: Ranking de Mercado & Itens mais consumidos
-        if any(w in text_lower for w in ["ranking mercado", "ranking de mercado", "o que mais compro", "mais consumidos", "itens mais comprados", "onde mais gasto"]):
-            from app.services.market_analytics_service import MarketAnalyticsService
-            top_items = MarketAnalyticsService.get_top_consumed_items(db, ws.id, limit=7, sort_by="spent")
-            top_stores = MarketAnalyticsService.get_supermarket_ranking(db, ws.id, limit=5)
+        # Comando: Ranking Inteligente discriminado por categoria (Mercado, Combustível, Tintas, Farmácia, Geral)
+        if any(w in text_lower for w in [
+            "ranking mercado", "ranking de mercado", "ranking combustivel", "ranking combustível",
+            "ranking tintas", "ranking tinta", "ranking farmacia", "ranking farmácia",
+            "o que mais compro", "mais consumidos", "itens mais comprados", "onde mais gasto", "ranking de gastos", "ranking compras"
+        ]):
+            from app.services.market_analytics_service import MarketAnalyticsService, MACRO_SEGMENTS
 
-            lines = ["🏆 *Ranking de Mercado & Consumo*", "───────────────────", "📦 *Produtos com Maior Gasto:*"]
+            # Detecta categoria solicitada
+            cat_filter = "all"
+            if any(w in text_lower for w in ["combustivel", "combustível", "posto"]):
+                cat_filter = "combustivel"
+            elif any(w in text_lower for w in ["tinta", "tintas", "construcao", "construção", "reforma"]):
+                cat_filter = "tintas_reforma"
+            elif any(w in text_lower for w in ["farmacia", "farmácia", "remedio", "remédio"]):
+                cat_filter = "farmacia"
+            elif any(w in text_lower for w in ["mercado", "supermercado"]):
+                cat_filter = "mercado"
+
+            seg_meta = MACRO_SEGMENTS.get(cat_filter, MACRO_SEGMENTS["all"])
+            top_items = MarketAnalyticsService.get_top_consumed_items(db, ws.id, limit=7, sort_by="spent", category_filter=cat_filter)
+            top_stores = MarketAnalyticsService.get_supermarket_ranking(db, ws.id, limit=5, category_filter=cat_filter)
+
+            lines = [f"{seg_meta['icon']} *{seg_meta['name']} - Ranking de Consumo*", "───────────────────", f"📦 *{seg_meta['products_title']}:*"]
             if not top_items:
-                lines.append("_Nenhum produto discriminado registrado ainda._")
+                lines.append(f"_Nenhum produto discriminado registrado em {seg_meta['name']}._")
             else:
                 for idx, it in enumerate(top_items, 1):
-                    lines.append(f"*{idx}.* {it['name']} → *{format_currency_br(it['total_spent'])}* ({it['total_quantity']:g} {it['unit']})")
+                    lines.append(f"*{idx}.* {it['icon']} {it['name']} ({it['category']}) → *{format_currency_br(it['total_spent'])}* ({it['total_quantity']:g} {it['unit']})")
 
-            lines.append("\n🏪 *Supermercados Onde Você Mais Gasta:*")
+            lines.append(f"\n{seg_meta['icon']} *{seg_meta['store_title']}:*")
             if not top_stores:
-                lines.append("_Nenhum supermercado registrado ainda._")
+                lines.append("_Nenhum estabelecimento registrado ainda._")
             else:
                 for idx, st in enumerate(top_stores, 1):
-                    lines.append(f"*{idx}.* {st['store_name']} → *{format_currency_br(st['total_spent'])}* ({st['transaction_count']} compras)")
+                    lines.append(f"*{idx}.* {st['icon']} {st['store_name']} → *{format_currency_br(st['total_spent'])}* ({st['transaction_count']} lançamentos)")
 
             lines.append("───────────────────")
-            lines.append("💡 _Acesse a Aba 8 no Painel Web para ver o Comparador de Preços completo!_")
+            lines.append("💡 _Dicas: Digite 'ranking combustivel', 'ranking tintas' ou acesse o Painel Web para alternar categorias._")
             await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=get_dashboard_link_keyboard(str(user_tg.id)))
             return
 
-        # Comando: Comparar Preços de Produtos entre Mercados
+        # Comando: Comparar Preços de Produtos entre Estabelecimentos
         if any(w in text_lower for w in ["comparar preco", "comparar preço", "comparar precos", "comparar preços", "preco de", "preço de", "onde é mais barato", "mais barato"]):
             import re
             from app.services.market_analytics_service import MarketAnalyticsService
@@ -708,16 +725,16 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             if not comparisons:
                 await update.message.reply_text(
                     f"🔍 *Nenhum preço encontrado para \"{search_query or 'produtos'}\".*\n\n"
-                    f"💡 Ao cadastrar cupons de diferentes supermercados, você poderá comparar os preços aqui!",
+                    f"💡 Ao cadastrar cupons e comprovantes de postos, lojas de tintas ou supermercados, você poderá comparar os preços aqui!",
                     parse_mode="Markdown"
                 )
                 return
 
-            lines = [f"🔍 *Comparador de Preços entre Mercados*", "───────────────────"]
+            lines = [f"🔍 *Comparador de Preços por Estabelecimento*", "───────────────────"]
             for prod in comparisons[:5]:
                 cheap = prod["cheapest_store"]
                 exp = prod["most_expensive_store"]
-                lines.append(f"🏷️ *{prod['product_name']}* ({prod['category']})")
+                lines.append(f"{prod['icon']} *{prod['product_name']}* ({prod['category']})")
                 lines.append(f"  🟢 *Menor Preço:* {format_currency_br(cheap['price'])}/{cheap['unit']} no *{cheap['store_name']}*")
                 if exp:
                     lines.append(f"  🔴 *Mais Caro:* {format_currency_br(exp['price'])}/{exp['unit']} no *{exp['store_name']}*")
@@ -726,7 +743,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 lines.append("")
 
             lines.append("───────────────────")
-            lines.append("💡 _Dica: Digite 'comparar precos leite' para buscar um produto específico._")
+            lines.append("💡 _Dica: Digite 'comparar precos gasolina' ou 'comparar precos leite' para buscar um produto._")
             await update.message.reply_text("\n".join(lines), parse_mode="Markdown", reply_markup=get_dashboard_link_keyboard(str(user_tg.id)))
             return
 

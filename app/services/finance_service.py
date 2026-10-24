@@ -896,27 +896,75 @@ class FinanceService:
         return True
 
     @staticmethod
-    def get_items_analytics(db: Session, workspace_id: int, year: Optional[int] = None, month: Optional[int] = None) -> Dict[str, Any]:
+    def get_items_analytics(db: Session, workspace_id: int, year: Optional[int] = None, month: Optional[int] = None, category: Optional[str] = None) -> Dict[str, Any]:
         """
-        Calcula estatísticas detalhadas de itens comprados no workspace/período.
-        Permite analisar o que foi comprado: top produtos por gasto e quantidade, gastos por categoria de produto, ticket médio.
+        Calcula estatísticas detalhadas de itens comprados no workspace/período,
+        separadas e filtradas por categoria (Supermercado, Combustível, Tintas & Reforma, Farmácia, etc.).
         """
-        now = datetime.datetime.now()
-        target_year = int(year) if year else now.year
-        target_month = int(month) if month else now.month
+        from app.services.market_analytics_service import MarketAnalyticsService, MACRO_SEGMENTS
 
-        # Busca todas as transações com itens do período
-        query = db.query(TransactionItem, Transaction).join(
+        # Busca todas as transações com itens do período com categoria pai
+        query = db.query(TransactionItem, Transaction, Category).join(
             Transaction, TransactionItem.transaction_id == Transaction.id
+        ).outerjoin(
+            Category, Transaction.category_id == Category.id
         ).filter(
-            Transaction.workspace_id == workspace_id,
-            extract('year', Transaction.transaction_date) == target_year,
-            extract('month', Transaction.transaction_date) == target_month
+            Transaction.workspace_id == workspace_id
         )
 
-        results = query.all()
+        if year:
+            query = query.filter(extract('year', Transaction.transaction_date) == int(year))
+        if month:
+            query = query.filter(extract('month', Transaction.transaction_date) == int(month))
 
-        total_items_count = len(results)
+        results = query.order_by(Transaction.transaction_date.desc(), TransactionItem.id.desc()).all()
+
+        # 1. Contadores e somatórios globais para todos os segmentos
+        segments_summary = {
+            "all": {"key": "all", "name": "Todos os Itens", "icon": "🌟", "color": "#6366f1", "count": 0, "total_spent": 0.0},
+            "mercado": {"key": "mercado", "name": "Supermercado & Alimentação", "icon": "🛒", "color": "#10b981", "count": 0, "total_spent": 0.0},
+            "combustivel": {"key": "combustivel", "name": "Combustíveis & Postos", "icon": "⛽", "color": "#f59e0b", "count": 0, "total_spent": 0.0},
+            "tintas_reforma": {"key": "tintas_reforma", "name": "Tintas & Construção", "icon": "🎨", "color": "#8b5cf6", "count": 0, "total_spent": 0.0},
+            "farmacia": {"key": "farmacia", "name": "Farmácia & Saúde", "icon": "💊", "color": "#06b6d4", "count": 0, "total_spent": 0.0},
+            "veicular": {"key": "veicular", "name": "Veicular & Peças", "icon": "🚗", "color": "#ec4899", "count": 0, "total_spent": 0.0},
+            "outros": {"key": "outros", "name": "Outros Itens", "icon": "📦", "color": "#64748b", "count": 0, "total_spent": 0.0}
+        }
+
+        for item, tx, cat in results:
+            cat_name = cat.name if cat else ""
+            seg_key, seg_name, subcat, color, icon = MarketAnalyticsService.resolve_item_segment(
+                item.name, item.category or "", tx.description or "", cat_name
+            )
+            price = item.total_price if (item.total_price and item.total_price > 0) else ((item.unit_price or 0.0) * (item.quantity or 1.0))
+
+            segments_summary["all"]["count"] += 1
+            segments_summary["all"]["total_spent"] += price
+
+            if seg_key in segments_summary:
+                segments_summary[seg_key]["count"] += 1
+                segments_summary[seg_key]["total_spent"] += price
+
+        # Calcula percentuais dos segmentos
+        all_spent = segments_summary["all"]["total_spent"] or 1.0
+        for seg in segments_summary.values():
+            seg["total_spent"] = round(seg["total_spent"], 2)
+            seg["pct_of_total"] = round((seg["total_spent"] / all_spent) * 100, 1)
+
+        # 2. Filtragem e agregação para a categoria ativa selecionada
+        active_cat = category if (category and category in segments_summary) else "all"
+        active_meta = MACRO_SEGMENTS.get(active_cat, MACRO_SEGMENTS["all"])
+
+        filtered_results = []
+        for item, tx, cat in results:
+            cat_name = cat.name if cat else ""
+            seg_key, seg_name, subcat, color, icon = MarketAnalyticsService.resolve_item_segment(
+                item.name, item.category or "", tx.description or "", cat_name
+            )
+            if active_cat != "all" and seg_key != active_cat:
+                continue
+            filtered_results.append((item, tx, cat, seg_key, seg_name, subcat, color, icon))
+
+        total_items_count = len(filtered_results)
         total_spent_on_items = 0.0
         total_units_sum = 0.0
 
@@ -924,102 +972,116 @@ class FinanceService:
         category_aggregated: Dict[str, Dict[str, Any]] = {}
         recent_item_purchases: List[Dict[str, Any]] = []
 
-        for item, tx in results:
-            price = item.total_price or (item.unit_price * item.quantity)
+        for item, tx, cat, seg_key, seg_name, subcat, color, icon in filtered_results:
+            price = item.total_price if (item.total_price and item.total_price > 0) else ((item.unit_price or 0.0) * (item.quantity or 1.0))
             total_spent_on_items += price
-            total_units_sum += item.quantity
+            total_units_sum += (item.quantity or 1.0)
 
             # Agregação por nome normalizado de produto
             norm_name = item.name.strip().title()
             if norm_name not in item_aggregated:
                 item_aggregated[norm_name] = {
                     "name": norm_name,
+                    "segment_key": seg_key,
+                    "segment_name": seg_name,
+                    "category": subcat,
+                    "badge_color": color,
+                    "icon": icon,
                     "total_spent": 0.0,
                     "total_quantity": 0.0,
                     "unit": item.unit or "un",
                     "purchase_count": 0,
                     "avg_price": 0.0,
-                    "last_unit_price": item.unit_price or 0.0,
-                    "category": item.category or "Geral"
+                    "last_unit_price": item.unit_price or 0.0
                 }
             item_aggregated[norm_name]["total_spent"] += price
-            item_aggregated[norm_name]["total_quantity"] += item.quantity
+            item_aggregated[norm_name]["total_quantity"] += (item.quantity or 1.0)
             item_aggregated[norm_name]["purchase_count"] += 1
-            if item.unit_price > 0:
+            if item.unit_price and item.unit_price > 0:
                 item_aggregated[norm_name]["last_unit_price"] = item.unit_price
 
-            # Agregação por categoria de produto
-            cat_name = item.category or "Geral"
-            if cat_name not in category_aggregated:
-                category_aggregated[cat_name] = {
-                    "category": cat_name,
+            # Agregação por subcategoria
+            if subcat not in category_aggregated:
+                category_aggregated[subcat] = {
+                    "category": subcat,
+                    "segment_key": seg_key,
+                    "icon": icon,
+                    "badge_color": color,
                     "total_spent": 0.0,
                     "items_count": 0,
                     "items": {}
                 }
-            category_aggregated[cat_name]["total_spent"] += price
-            category_aggregated[cat_name]["items_count"] += 1
-            if norm_name not in category_aggregated[cat_name]["items"]:
-                category_aggregated[cat_name]["items"][norm_name] = {
+            category_aggregated[subcat]["total_spent"] += price
+            category_aggregated[subcat]["items_count"] += 1
+            if norm_name not in category_aggregated[subcat]["items"]:
+                category_aggregated[subcat]["items"][norm_name] = {
                     "name": norm_name,
                     "total_spent": 0.0,
                     "total_quantity": 0.0,
                     "unit": item.unit or "un"
                 }
-            category_aggregated[cat_name]["items"][norm_name]["total_spent"] += price
-            category_aggregated[cat_name]["items"][norm_name]["total_quantity"] += item.quantity
+            category_aggregated[subcat]["items"][norm_name]["total_spent"] += price
+            category_aggregated[subcat]["items"][norm_name]["total_quantity"] += (item.quantity or 1.0)
 
             recent_item_purchases.append({
                 "id": item.id,
                 "transaction_id": tx.id,
                 "transaction_desc": tx.description,
-                "transaction_date": tx.transaction_date.strftime("%d/%m/%Y"),
+                "transaction_date": tx.transaction_date.strftime("%d/%m/%Y") if tx.transaction_date else "",
                 "name": item.name,
-                "quantity": item.quantity,
-                "unit": item.unit,
-                "unit_price": item.unit_price,
-                "total_price": price,
-                "category": item.category
+                "segment_key": seg_key,
+                "segment_name": seg_name,
+                "category": subcat,
+                "badge_color": color,
+                "icon": icon,
+                "quantity": item.quantity or 1.0,
+                "unit": item.unit or "un",
+                "unit_price": item.unit_price or 0.0,
+                "total_price": price
             })
 
-        # Calcula preços médios
+        # Preços médios
         for k, v in item_aggregated.items():
             if v["total_quantity"] > 0:
                 v["avg_price"] = round(v["total_spent"] / v["total_quantity"], 2)
             v["total_spent"] = round(v["total_spent"], 2)
             v["total_quantity"] = round(v["total_quantity"], 2)
 
-        # Top itens por maior valor total gasto
+        # Top itens
         top_by_spent = sorted(item_aggregated.values(), key=lambda x: x["total_spent"], reverse=True)[:10]
-
-        # Top itens mais frequentes / comprados
         top_by_quantity = sorted(item_aggregated.values(), key=lambda x: (x["purchase_count"], x["total_quantity"]), reverse=True)[:10]
 
         # Categorias de produtos ordenadas
         categories_list = []
-        for cat in sorted(category_aggregated.values(), key=lambda x: x["total_spent"], reverse=True):
-            items_arr = sorted(cat["items"].values(), key=lambda x: x["total_spent"], reverse=True)
+        for cat_data in sorted(category_aggregated.values(), key=lambda x: x["total_spent"], reverse=True):
+            items_arr = sorted(cat_data["items"].values(), key=lambda x: x["total_spent"], reverse=True)
             for it in items_arr:
                 it["total_spent"] = round(it["total_spent"], 2)
                 it["total_quantity"] = round(it["total_quantity"], 2)
             categories_list.append({
-                "category": cat["category"],
-                "total_spent": round(cat["total_spent"], 2),
-                "items_count": cat["items_count"],
+                "category": cat_data["category"],
+                "segment_key": cat_data.get("segment_key", "outros"),
+                "icon": cat_data.get("icon", "🏷️"),
+                "badge_color": cat_data.get("badge_color", "#6366f1"),
+                "total_spent": round(cat_data["total_spent"], 2),
+                "items_count": cat_data["items_count"],
                 "items_list": items_arr
             })
 
         return {
             "workspace_id": workspace_id,
-            "year": target_year,
-            "month": target_month,
+            "year": year,
+            "month": month,
+            "selected_category": active_cat,
+            "active_segment": active_meta,
+            "segments_summary": list(segments_summary.values()),
             "total_items_count": total_items_count,
             "total_spent_on_items": round(total_spent_on_items, 2),
             "total_units_sum": round(total_units_sum, 2),
             "top_by_spent": top_by_spent,
             "top_by_quantity": top_by_quantity,
             "categories": categories_list,
-            "recent_items": recent_item_purchases[:30]
+            "recent_items": recent_item_purchases[:50]
         }
 
 

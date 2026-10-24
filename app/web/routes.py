@@ -1203,10 +1203,11 @@ async def api_get_items_analytics(
     workspace_id: int = Query(...),
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
+    category: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Retorna a análise e estatísticas completas de itens e produtos comprados no período"""
-    data = FinanceService.get_items_analytics(db, workspace_id, year=year, month=month)
+    """Retorna a análise e estatísticas completas de itens e produtos comprados no período, com suporte a filtro por categoria"""
+    data = FinanceService.get_items_analytics(db, workspace_id, year=year, month=month, category=category)
     return data
 
 @router.get("/api/market/ranking")
@@ -1215,14 +1216,15 @@ async def api_get_market_ranking(
     sort_by: str = Query("spent"),
     year: Optional[int] = Query(None),
     month: Optional[int] = Query(None),
+    category: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Retorna o ranking de itens mais consumidos e ranking de supermercados/gastos"""
+    """Retorna o ranking de itens mais consumidos e ranking de estabelecimentos filtrados por categoria"""
     top_items = MarketAnalyticsService.get_top_consumed_items(
-        db, workspace_id, limit=20, sort_by=sort_by, year=year, month=month
+        db, workspace_id, limit=20, sort_by=sort_by, year=year, month=month, category_filter=category
     )
     top_stores = MarketAnalyticsService.get_supermarket_ranking(
-        db, workspace_id, limit=10, year=year, month=month
+        db, workspace_id, limit=10, year=year, month=month, category_filter=category
     )
     return {
         "top_items": top_items,
@@ -1233,11 +1235,12 @@ async def api_get_market_ranking(
 async def api_compare_market_prices(
     workspace_id: int = Query(...),
     query: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
     db: Session = Depends(get_db)
 ):
-    """Compara preços unitários do mesmo produto entre diferentes supermercados"""
+    """Compara preços unitários do mesmo produto entre diferentes estabelecimentos, filtrado por categoria"""
     comparisons = MarketAnalyticsService.get_cross_store_price_comparison(
-        db, workspace_id, search_term=query
+        db, workspace_id, search_term=query, category_filter=category
     )
     return {
         "comparisons": comparisons

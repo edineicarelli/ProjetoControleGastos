@@ -2025,10 +2025,10 @@ body {
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem;">
                             <div>
                                 <h2 style="font-size: 1.25rem; font-weight: 700; color: #fff; display: flex; align-items: center; gap: 0.5rem;">
-                                    <span>🛍️</span> <span>Inteligência de Mercado & Comparador de Preços</span>
+                                    <span>🛍️</span> <span>Análise de Itens & Inteligência de Compras</span>
                                 </h2>
                                 <p style="color: var(--text-secondary); font-size: 0.85rem; margin-top: 0.2rem;">
-                                    Descubra o ranking dos produtos mais consumidos, onde você mais gasta e compare preços entre diferentes supermercados.
+                                    Monitore compras item a item sem misturar mercado, combustíveis e tintas. Filtre por categorias e compare preços entre estabelecimentos.
                                 </p>
                             </div>
                             <div style="display: flex; gap: 0.5rem;">
@@ -2042,12 +2042,55 @@ body {
                         </div>
                     </div>
 
-                    <!-- KPIs de Itens & Mercado -->
+                    <!-- SELETOR DE CATEGORIAS / MACRO SEGMENTOS -->
+                    <div class="category-segment-nav" id="itemCategorySegmentNav">
+                        <button type="button" class="segment-pill-btn active" data-category="all" onclick="selectItemAnalyticsCategory('all')">
+                            <span>🌟</span> <span>Todos os Itens</span> <span class="segment-count-badge" id="catCountAll">0</span>
+                        </button>
+                        <button type="button" class="segment-pill-btn" data-category="mercado" onclick="selectItemAnalyticsCategory('mercado')">
+                            <span>🛒</span> <span>Supermercado & Feira</span> <span class="segment-count-badge" id="catCountMercado">0</span>
+                        </button>
+                        <button type="button" class="segment-pill-btn" data-category="combustivel" onclick="selectItemAnalyticsCategory('combustivel')">
+                            <span>⛽</span> <span>Combustíveis & Postos</span> <span class="segment-count-badge" id="catCountCombustivel">0</span>
+                        </button>
+                        <button type="button" class="segment-pill-btn" data-category="tintas_reforma" onclick="selectItemAnalyticsCategory('tintas_reforma')">
+                            <span>🎨</span> <span>Tintas & Construção</span> <span class="segment-count-badge" id="catCountTintas">0</span>
+                        </button>
+                        <button type="button" class="segment-pill-btn" data-category="farmacia" onclick="selectItemAnalyticsCategory('farmacia')">
+                            <span>💊</span> <span>Farmácia & Saúde</span> <span class="segment-count-badge" id="catCountFarmacia">0</span>
+                        </button>
+                        <button type="button" class="segment-pill-btn" data-category="veicular" onclick="selectItemAnalyticsCategory('veicular')">
+                            <span>🚗</span> <span>Veicular & Peças</span> <span class="segment-count-badge" id="catCountVeicular">0</span>
+                        </button>
+                        <button type="button" class="segment-pill-btn" data-category="outros" onclick="selectItemAnalyticsCategory('outros')">
+                            <span>📦</span> <span>Outros</span> <span class="segment-count-badge" id="catCountOutros">0</span>
+                        </button>
+                    </div>
+
+                    <!-- BARRA DE DISTRIBUIÇÃO VISUAL DE GASTOS POR CATEGORIA -->
+                    <div class="glass-card" id="categoryDistributionCard" style="margin-bottom: 1.25rem; padding: 0.85rem 1.25rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                            <span style="font-size: 0.85rem; font-weight: 700; color: #cbd5e1; display: inline-flex; align-items: center; gap: 0.4rem;">
+                                <span>📊</span> <span>Distribuição de Gastos por Categoria:</span>
+                            </span>
+                            <span id="activeCategoryBadgeIndicator" class="item-category-tag" style="background: rgba(99, 102, 241, 0.2); color: #a5b4fc; border: 1px solid rgba(99, 102, 241, 0.4);">
+                                🌟 Exibindo: Todos os Itens
+                            </span>
+                        </div>
+                        <div class="category-dist-container" id="categoryDistBar">
+                            <!-- Preenchido via JS -->
+                        </div>
+                        <div class="category-dist-legend" id="categoryDistLegend">
+                            <!-- Preenchido via JS -->
+                        </div>
+                    </div>
+
+                    <!-- KPIs Dinâmicos de Itens & Categoria Selecionada -->
                     <div class="metrics-grid" style="margin-bottom: 1.5rem;">
                         <div class="glass-card metric-card">
-                            <div class="metric-icon-wrap">🛒</div>
+                            <div class="metric-icon-wrap" id="analyticsKpiIconItems">📦</div>
                             <div class="metric-content">
-                                <span class="metric-label">Produtos Registrados</span>
+                                <span class="metric-label" id="analyticsItemsLabel">Produtos / Itens Registrados</span>
                                 <span class="metric-value" id="analyticsTotalItems">0</span>
                                 <div class="metric-footer">
                                     <span class="status-badge active">No período selecionado</span>
@@ -2056,23 +2099,23 @@ body {
                         </div>
 
                         <div class="glass-card metric-card expense">
-                            <div class="metric-icon-wrap">💸</div>
+                            <div class="metric-icon-wrap" id="analyticsKpiIconSpent">💸</div>
                             <div class="metric-content">
-                                <span class="metric-label">Total Gasto em Mercado</span>
+                                <span class="metric-label" id="analyticsSpentLabel">Total Gasto na Categoria</span>
                                 <span class="metric-value text-expense" id="analyticsTotalSpent">R$ 0,00</span>
                                 <div class="metric-footer">
-                                    <span class="status-badge" style="background: var(--expense-bg); color: #fb7185;">Soma de produtos</span>
+                                    <span class="status-badge" style="background: var(--expense-bg); color: #fb7185;" id="analyticsSpentFooter">Soma discriminada</span>
                                 </div>
                             </div>
                         </div>
 
                         <div class="glass-card metric-card">
-                            <div class="metric-icon-wrap">🏪</div>
+                            <div class="metric-icon-wrap" id="analyticsKpiIconStores">🏪</div>
                             <div class="metric-content">
-                                <span class="metric-label">Supermercados Visitados</span>
+                                <span class="metric-label" id="analyticsStoresLabel">Estabelecimentos Visitados</span>
                                 <span class="metric-value" id="analyticsTotalStores">0</span>
                                 <div class="metric-footer">
-                                    <span class="status-badge" style="background: var(--primary-bg); color: var(--primary-light);">Estabelecimentos</span>
+                                    <span class="status-badge" style="background: var(--primary-bg); color: var(--primary-light);" id="analyticsStoresFooter">Locais registrados</span>
                                 </div>
                             </div>
                         </div>
@@ -2080,21 +2123,21 @@ body {
                         <div class="glass-card metric-card health">
                             <div class="metric-icon-wrap">🏷️</div>
                             <div class="metric-content">
-                                <span class="metric-label">Categorias de Itens</span>
+                                <span class="metric-label" id="analyticsCategoriesLabel">Subcategorias / Variedade</span>
                                 <span class="metric-value" id="analyticsTotalCategories">0</span>
                                 <div class="metric-footer">
-                                    <span class="status-badge" style="background: var(--info-bg); color: #38bdf8;">Mercearia, Carnes, etc.</span>
+                                    <span class="status-badge" style="background: var(--info-bg); color: #38bdf8;">Divisões de itens</span>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Rankings Grid (Top Produtos + Top Mercados + Categorias) -->
+                    <!-- Rankings Grid (Top Produtos + Top Estabelecimentos + Subcategorias) -->
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 1.25rem; margin-bottom: 1.5rem;">
                         <!-- Top Produtos Mais Consumidos com Alternador -->
                         <div class="glass-card" style="display: flex; flex-direction: column;">
                             <div class="chart-header" style="margin-bottom: 0.75rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-                                <h3 class="chart-title" style="margin: 0; font-size: 1.05rem;">🏆 Produtos Mais Consumidos</h3>
+                                <h3 class="chart-title" id="topProductsTitle" style="margin: 0; font-size: 1.05rem;">🏆 Produtos Mais Consumidos</h3>
                                 <div class="btn-group" style="display: inline-flex; background: rgba(0,0,0,0.3); border-radius: var(--radius-sm); padding: 2px;">
                                     <button type="button" id="btnSortSpent" class="btn btn-xs active" onclick="switchItemRankingSort('spent')" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 4px;">Por Gasto (R$)</button>
                                     <button type="button" id="btnSortQty" class="btn btn-xs" onclick="switchItemRankingSort('quantity')" style="padding: 0.2rem 0.55rem; font-size: 0.75rem; border-radius: 4px;">Por Volume</button>
@@ -2105,10 +2148,10 @@ body {
                             </div>
                         </div>
 
-                        <!-- Ranking de Supermercados onde mais gasta -->
+                        <!-- Ranking de Estabelecimentos onde mais gasta -->
                         <div class="glass-card" style="display: flex; flex-direction: column;">
                             <div class="chart-header" style="margin-bottom: 0.75rem;">
-                                <h3 class="chart-title" style="margin: 0; font-size: 1.05rem;">🏪 Onde Você Mais Gasta (Mercados)</h3>
+                                <h3 class="chart-title" id="topStoresTitle" style="margin: 0; font-size: 1.05rem;">🏪 Onde Você Mais Gasta</h3>
                             </div>
                             <div id="topStoresList" class="ranking-card" style="flex: 1;">
                                 <div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Carregando dados...</div>
@@ -2118,7 +2161,7 @@ body {
                         <!-- Gastos por Categoria de Produto -->
                         <div class="glass-card" style="display: flex; flex-direction: column;">
                             <div class="chart-header" style="margin-bottom: 0.75rem;">
-                                <h3 class="chart-title" style="margin: 0; font-size: 1.05rem;">🍕 Gastos por Categoria</h3>
+                                <h3 class="chart-title" id="topCategoriesTitle" style="margin: 0; font-size: 1.05rem;">🏷️ Gastos por Subcategoria</h3>
                             </div>
                             <div id="topCategoriesList" class="ranking-card" style="flex: 1;">
                                 <div style="text-align: center; color: var(--text-muted); padding: 1.5rem;">Carregando dados...</div>
@@ -2126,20 +2169,20 @@ body {
                         </div>
                     </div>
 
-                    <!-- NOVO: COMPARADOR DE PREÇOS ENTRE SUPERMERCADOS -->
+                    <!-- COMPARADOR DE PREÇOS ENTRE ESTABELECIMENTOS -->
                     <div class="glass-card" style="margin-bottom: 1.5rem; border: 1px solid rgba(99, 102, 241, 0.3);">
                         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 1rem; margin-bottom: 1rem;">
                             <div>
                                 <div style="display: flex; align-items: center; gap: 0.5rem;">
                                     <span style="font-size: 1.25rem;">🔍</span>
-                                    <h3 style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">Comparador de Preços entre Supermercados</h3>
-                                    <span class="badge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.75rem; border: 1px solid rgba(16, 185, 129, 0.3);">Inteligente</span>
+                                    <h3 id="priceCompareTitle" style="font-size: 1.15rem; font-weight: 700; color: #fff; margin: 0;">Comparador de Preços entre Estabelecimentos</h3>
+                                    <span class="badge" id="priceCompareBadge" style="background: rgba(16, 185, 129, 0.15); color: #34d399; font-size: 0.75rem; border: 1px solid rgba(16, 185, 129, 0.3);">Inteligente</span>
                                 </div>
-                                <small style="color: var(--text-secondary); display: block; margin-top: 0.2rem;">
-                                    Compare o preço unitário do mesmo produto entre os estabelecimentos onde você já comprou para economizar.
+                                <small id="priceCompareSubtitle" style="color: var(--text-secondary); display: block; margin-top: 0.2rem;">
+                                    Compare o preço unitário do mesmo produto entre postos, lojas de tintas e supermercados para economizar.
                                 </small>
                             </div>
-                            <input type="text" id="priceCompareSearchInput" onkeyup="filterPriceComparisonTable(this.value)" placeholder="🔍 Filtrar produto (ex: Leite, Tomate, Pão)..." class="form-control" style="max-width: 300px; padding: 0.45rem 0.8rem; font-size: 0.84rem;">
+                            <input type="text" id="priceCompareSearchInput" onkeyup="filterPriceComparisonTable(this.value)" placeholder="🔍 Filtrar produto (ex: Leite, Gasolina, Tinta)..." class="form-control" style="max-width: 320px; padding: 0.45rem 0.8rem; font-size: 0.84rem;">
                         </div>
 
                         <div class="table-container" style="max-height: 420px; overflow-y: auto;">
@@ -2147,11 +2190,11 @@ body {
                                 <thead>
                                     <tr>
                                         <th>Produto / Item</th>
-                                        <th>Categoria</th>
+                                        <th>Categoria / Segmento</th>
                                         <th style="color: #34d399;">🟢 Menor Preço (Mais Barato)</th>
                                         <th style="color: #fb7185;">🔴 Maior Preço (Mais Caro)</th>
                                         <th style="text-align: center;">Diferença / Variação</th>
-                                        <th>Histórico por Mercado</th>
+                                        <th>Histórico por Estabelecimento</th>
                                     </tr>
                                 </thead>
                                 <tbody id="priceComparisonTableBody">
@@ -2167,10 +2210,10 @@ body {
                     <div class="glass-card">
                         <div class="table-toolbar" style="margin-bottom: 1rem;">
                             <div>
-                                <h3 style="font-size: 1.05rem; font-weight: 700; color: #fff; margin: 0;">📜 Histórico Completo de Compras Item a Item</h3>
-                                <small style="color: var(--text-muted);">Consulte todos os produtos discriminados em cupons e notas fiscais</small>
+                                <h3 id="itemsHistoryTitle" style="font-size: 1.05rem; font-weight: 700; color: #fff; margin: 0;">📜 Histórico Completo de Compras Item a Item</h3>
+                                <small id="itemsHistorySubtitle" style="color: var(--text-muted);">Consulte todos os produtos discriminados em cupons e notas fiscais por categoria</small>
                             </div>
-                            <input type="text" id="itemsSearchInput" onkeyup="filterItemsHistoryTable(this.value)" placeholder="🔍 Buscar produto (ex: arroz, carne, leite)..." class="form-control" style="max-width: 280px; padding: 0.4rem 0.75rem; font-size: 0.82rem;">
+                            <input type="text" id="itemsSearchInput" onkeyup="filterItemsHistoryTable(this.value)" placeholder="🔍 Buscar produto (ex: arroz, gasolina, tinta)..." class="form-control" style="max-width: 300px; padding: 0.4rem 0.75rem; font-size: 0.82rem;">
                         </div>
                         <div class="table-container" style="max-height: 400px; overflow-y: auto;">
                             <table class="custom-table" id="itemsHistoryTable" style="font-size: 0.85rem;">
