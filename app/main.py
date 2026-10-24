@@ -12,6 +12,7 @@ from app.database import init_db
 from app.web.routes import router as web_router
 from app.bot.bot_instance import create_bot_app
 from app.services.reminder_service import ReminderService
+from app.version import __version__
 
 # Logging configuration
 logging.basicConfig(
@@ -107,7 +108,7 @@ async def restart_telegram_bot():
 app = FastAPI(
     title="Sistema de Gestão Financeira Inteligente (Telegram + IA)",
     description="Plataforma completa de finanças com bot no Telegram, NLP Multimodal e Dashboard Web",
-    version="1.0.0",
+    version=__version__,
     lifespan=lifespan
 )
 
