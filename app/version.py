@@ -2,7 +2,7 @@ import os
 import subprocess
 from typing import Dict, Any
 
-__version__ = "1.6.0"
+__version__ = "1.6.1"
 __release_date__ = "24/10/2026"
 __app_name__ = "Controle Financeiro Inteligente"
 

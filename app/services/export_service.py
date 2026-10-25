@@ -23,7 +23,13 @@ class ExportService:
     ) -> Dict[str, Any]:
         """Filtra transações e calcula métricas, agrupamentos por categoria e rankings para exportação"""
         ws = db.query(Workspace).filter(Workspace.id == workspace_id).first()
-        query = db.query(Transaction).filter(Transaction.workspace_id == workspace_id)
+        if not ws:
+            # Fallback seguro para evitar quebras se o ID do workspace tiver mudado
+            ws = db.query(Workspace).first()
+        if not ws:
+            ws = Workspace(id=workspace_id or 1, name="Workspace Principal", type="personal")
+
+        query = db.query(Transaction).filter(Transaction.workspace_id == ws.id)
 
         # Filtro de datas
         dt_start = None
@@ -62,8 +68,8 @@ class ExportService:
 
         txs = query.order_by(Transaction.transaction_date.desc(), Transaction.id.desc()).all()
 
-        total_income = sum(t.amount for t in txs if t.type == "income")
-        total_expense = sum(t.amount for t in txs if t.type == "expense")
+        total_income = sum(float(t.amount or 0.0) for t in txs if t.type == "income")
+        total_expense = sum(float(t.amount or 0.0) for t in txs if t.type == "expense")
         net_balance = total_income - total_expense
 
         # Taxa de Poupança e Saúde
@@ -102,7 +108,7 @@ class ExportService:
                 cicon = t.category.icon if t.category else "🏷️"
                 if cname not in cat_totals:
                     cat_totals[cname] = {"name": cname, "icon": cicon, "total": 0.0, "count": 0}
-                cat_totals[cname]["total"] += t.amount
+                cat_totals[cname]["total"] += float(t.amount or 0.0)
                 cat_totals[cname]["count"] += 1
 
         sorted_cats = sorted(list(cat_totals.values()), key=lambda x: x["total"], reverse=True)
@@ -111,7 +117,7 @@ class ExportService:
 
         # Top Maiores Despesas
         expenses_only = [t for t in txs if t.type == "expense"]
-        top_expenses = sorted(expenses_only, key=lambda x: x.amount, reverse=True)[:top_expenses_limit]
+        top_expenses = sorted(expenses_only, key=lambda x: float(x.amount or 0.0), reverse=True)[:top_expenses_limit]
 
         # Comparativo com período anterior (se solicitado)
         comparison = None
@@ -121,7 +127,7 @@ class ExportService:
             prev_start = prev_end - datetime.timedelta(days=period_days - 1)
 
             prev_query = db.query(Transaction).filter(
-                Transaction.workspace_id == workspace_id,
+                Transaction.workspace_id == ws.id,
                 Transaction.transaction_date >= prev_start,
                 Transaction.transaction_date <= prev_end.replace(hour=23, minute=59, second=59)
             )
@@ -133,8 +139,8 @@ class ExportService:
                 prev_query = prev_query.filter(Transaction.category_id == category_id)
 
             prev_txs = prev_query.all()
-            prev_income = sum(t.amount for t in prev_txs if t.type == "income")
-            prev_expense = sum(t.amount for t in prev_txs if t.type == "expense")
+            prev_income = sum(float(t.amount or 0.0) for t in prev_txs if t.type == "income")
+            prev_expense = sum(float(t.amount or 0.0) for t in prev_txs if t.type == "expense")
             prev_net = prev_income - prev_expense
 
             diff_income_pct = ((total_income - prev_income) / prev_income * 100) if prev_income > 0 else (100.0 if total_income > 0 else 0.0)
@@ -209,14 +215,16 @@ class ExportService:
         # 1. Tabela Principal de Lançamentos
         tx_rows = []
         for t in txs:
-            acc_name = t.account.name if t.account else t.payment_method
+            acc_name = (t.account.name if t.account else t.payment_method) or "Não informado"
+            tx_date_str = t.transaction_date.strftime("%d/%m/%Y %H:%M") if t.transaction_date else "-"
+            amt = float(t.amount or 0.0)
             tx_rows.append({
                 "ID": t.id,
-                "Data": t.transaction_date.strftime("%d/%m/%Y %H:%M"),
+                "Data": tx_date_str,
                 "Tipo": "Receita (Entrada)" if t.type == "income" else "Despesa (Saída)",
-                "Descrição": t.description,
+                "Descrição": t.description or "Sem Descrição",
                 "Categoria": t.category.name if t.category else "Outros",
-                "Valor (R$)": t.amount if t.type == "income" else -t.amount,
+                "Valor (R$)": amt if t.type == "income" else -amt,
                 "Conta / Pagamento": acc_name,
                 "Status": "Concluído" if t.status == "completed" else "Pendente",
                 "Usuário": t.user.name if t.user else "Sistema"
@@ -238,19 +246,22 @@ class ExportService:
         # 3. Top Maiores Gastos
         top_rows = []
         for rank, t in enumerate(data["top_expenses"], 1):
+            acc_name = (t.account.name if t.account else t.payment_method) or "Não informado"
+            tx_date_str = t.transaction_date.strftime("%d/%m/%Y") if t.transaction_date else "-"
             top_rows.append({
                 "Posição": f"#{rank}",
-                "Descrição": t.description,
+                "Descrição": t.description or "Despesa",
                 "Categoria": t.category.name if t.category else "Outros",
-                "Data": t.transaction_date.strftime("%d/%m/%Y"),
-                "Valor (R$)": t.amount,
-                "Conta": t.account.name if t.account else t.payment_method
+                "Data": tx_date_str,
+                "Valor (R$)": float(t.amount or 0.0),
+                "Conta": acc_name
             })
         df_top = pd.DataFrame(top_rows)
 
         # 4. Resumo Executivo / KPIs
+        ws_display_name = ws.name if (ws and ws.name) else "Perfil Principal"
         kpi_rows = [
-            {"Indicador": "Perfil / Workspace", "Valor": ws.name},
+            {"Indicador": "Perfil / Workspace", "Valor": ws_display_name},
             {"Indicador": "Período Analisado", "Valor": data["period_label"]},
             {"Indicador": "Conta Filtrada", "Valor": data["selected_account"].name if data["selected_account"] else "Todas as Contas"},
             {"Indicador": "Tipo de Movimentação", "Valor": "Todas" if data["tx_type"] == "all" else ("Apenas Receitas" if data["tx_type"] == "income" else "Apenas Despesas")},
@@ -275,10 +286,17 @@ class ExportService:
 
         df_kpi = pd.DataFrame(kpi_rows)
 
-        # Salva o arquivo Excel
+        # Sanitiza nome do arquivo para evitar diretórios inválidos (ex: barras /, caracteres especiais)
+        clean_ws_name = "".join(c if (c.isalnum() or c in ("-", "_")) else "_" for c in ws_display_name).strip("_")
+        if not clean_ws_name:
+            clean_ws_name = f"workspace_{workspace_id}"
+
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"relatorio_{ws.name.replace(' ', '_')}_{timestamp}.xlsx"
-        filepath = os.path.join(settings.UPLOAD_DIR, "exports", filename)
+        filename = f"relatorio_{clean_ws_name}_{timestamp}.xlsx"
+
+        export_dir = os.path.join(settings.UPLOAD_DIR, "exports")
+        os.makedirs(export_dir, exist_ok=True)
+        filepath = os.path.join(export_dir, filename)
 
         with pd.ExcelWriter(filepath, engine="openpyxl") as writer:
             df_kpi.to_excel(writer, index=False, sheet_name="Resumo Executivo")
@@ -324,10 +342,18 @@ class ExportService:
 
         ws = data["workspace"]
         txs = data["transactions"]
+        ws_display_name = ws.name if (ws and ws.name) else "Perfil Principal"
+
+        clean_ws_name = "".join(c if (c.isalnum() or c in ("-", "_")) else "_" for c in ws_display_name).strip("_")
+        if not clean_ws_name:
+            clean_ws_name = f"workspace_{workspace_id}"
 
         timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"relatorio_{ws.name.replace(' ', '_')}_{timestamp}.pdf"
-        filepath = os.path.join(settings.UPLOAD_DIR, "exports", filename)
+        filename = f"relatorio_{clean_ws_name}_{timestamp}.pdf"
+
+        export_dir = os.path.join(settings.UPLOAD_DIR, "exports")
+        os.makedirs(export_dir, exist_ok=True)
+        filepath = os.path.join(export_dir, filename)
 
         doc = SimpleDocTemplate(filepath, pagesize=letter, leftMargin=36, rightMargin=36, topMargin=36, bottomMargin=36)
         elements = []
@@ -361,7 +387,7 @@ class ExportService:
         )
 
         # Cabeçalho do Relatório
-        elements.append(Paragraph(f"<b>💎 Relatório Financeiro: {ws.name}</b>", title_style))
+        elements.append(Paragraph(f"<b>💎 Relatório Financeiro: {ws_display_name}</b>", title_style))
         elements.append(Paragraph(f"Período: <b>{data['period_label']}</b> • Gerado em: {datetime.datetime.now().strftime('%d/%m/%Y às %H:%M')}", sub_style))
         if data["selected_account"]:
             elements.append(Paragraph(f"Filtro de Conta: <b>{data['selected_account'].name}</b>", sub_style))
@@ -429,15 +455,17 @@ class ExportService:
             elements.append(Paragraph(f"<b>🏆 Top {len(data['top_expenses'])} Maiores Despesas do Período</b>", section_title_style))
             top_data = [["Rank", "Descrição", "Categoria", "Data", "Conta", "Valor"]]
             for rank, t in enumerate(data["top_expenses"], 1):
-                acc_name = t.account.name if t.account else t.payment_method
-                cat_name = t.category.name if t.category else "Outros"
+                acc_name = (t.account.name if t.account else t.payment_method) or "-"
+                cat_name = (t.category.name if t.category else "Outros") or "-"
+                desc_str = (t.description or "Despesa")[:25]
+                date_str = t.transaction_date.strftime("%d/%m/%Y") if t.transaction_date else "-"
                 top_data.append([
                     f"#{rank}",
-                    t.description[:25],
+                    desc_str,
                     cat_name[:15],
-                    t.transaction_date.strftime("%d/%m/%Y"),
+                    date_str,
                     acc_name[:12],
-                    format_currency_br(t.amount)
+                    format_currency_br(t.amount or 0.0)
                 ])
             top_table = Table(top_data, colWidths=[40, 160, 95, 75, 85, 85])
             top_table.setStyle(TableStyle([
@@ -459,13 +487,15 @@ class ExportService:
         table_data = [["Data", "Tipo", "Descrição", "Categoria", "Conta / Método", "Valor"]]
         for t in txs[:100]:  # Limita a 100 no PDF para fluidez
             tipo_label = "+ Entrada" if t.type == "income" else "- Saída"
-            cat_name = t.category.name if t.category else "Outros"
-            acc_name = t.account.name if t.account else t.payment_method
-            val_str = format_currency_br(t.amount)
+            cat_name = (t.category.name if t.category else "Outros") or "-"
+            acc_name = (t.account.name if t.account else t.payment_method) or "-"
+            desc_str = (t.description or "Sem Descrição")[:25]
+            date_str = t.transaction_date.strftime("%d/%m/%Y") if t.transaction_date else "-"
+            val_str = format_currency_br(t.amount or 0.0)
             table_data.append([
-                t.transaction_date.strftime("%d/%m/%Y"),
+                date_str,
                 tipo_label,
-                t.description[:25],
+                desc_str,
                 cat_name[:15],
                 acc_name[:15],
                 val_str

@@ -2076,6 +2076,12 @@ function openReportExportModal(format = 'excel') {
     const modal = document.getElementById('reportExportModal');
     if (!modal) return;
 
+    // Sincroniza o workspaceId do formulário com o workspace ativo
+    const repWsInput = document.getElementById('repWorkspaceId');
+    if (repWsInput && window.currentWorkspaceId) {
+        repWsInput.value = window.currentWorkspaceId;
+    }
+
     // Set active format radio
     const formatRadio = document.querySelector(`input[name="repFormat"][value="${format}"]`);
     if (formatRadio) formatRadio.checked = true;

@@ -1,7 +1,10 @@
 import os
 import json
 import asyncio
+import logging
 from typing import Optional, List, Dict, Any
+
+logger = logging.getLogger(__name__)
 from pydantic import BaseModel
 from fastapi import APIRouter, Request, Depends, Query, HTTPException, WebSocket, WebSocketDisconnect, UploadFile, File, Form, status
 from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse, RedirectResponse, JSONResponse
@@ -327,19 +330,27 @@ async def export_excel_route(
     include_metrics: bool = Query(True),
     db: Session = Depends(get_db)
 ):
-    filepath = ExportService.export_to_excel(
-        db=db,
-        workspace_id=workspace_id,
-        start_date=start_date,
-        end_date=end_date,
-        account_id=account_id,
-        tx_type=tx_type,
-        category_id=category_id,
-        top_expenses_limit=top_expenses_limit,
-        include_comparison=include_comparison,
-        include_metrics=include_metrics
-    )
-    return FileResponse(filepath, filename=os.path.basename(filepath), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    try:
+        filepath = ExportService.export_to_excel(
+            db=db,
+            workspace_id=workspace_id,
+            start_date=start_date,
+            end_date=end_date,
+            account_id=account_id,
+            tx_type=tx_type,
+            category_id=category_id,
+            top_expenses_limit=top_expenses_limit,
+            include_comparison=include_comparison,
+            include_metrics=include_metrics
+        )
+        if not filepath or not os.path.exists(filepath):
+            raise HTTPException(status_code=500, detail="Arquivo Excel não pôde ser gerado no servidor.")
+        return FileResponse(filepath, filename=os.path.basename(filepath), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao exportar Excel para workspace {workspace_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno ao gerar planilha Excel: {str(e)}")
 
 @router.get("/export/pdf")
 async def export_pdf_route(
@@ -354,19 +365,27 @@ async def export_pdf_route(
     include_metrics: bool = Query(True),
     db: Session = Depends(get_db)
 ):
-    filepath = ExportService.export_to_pdf(
-        db=db,
-        workspace_id=workspace_id,
-        start_date=start_date,
-        end_date=end_date,
-        account_id=account_id,
-        tx_type=tx_type,
-        category_id=category_id,
-        top_expenses_limit=top_expenses_limit,
-        include_comparison=include_comparison,
-        include_metrics=include_metrics
-    )
-    return FileResponse(filepath, filename=os.path.basename(filepath), media_type="application/pdf")
+    try:
+        filepath = ExportService.export_to_pdf(
+            db=db,
+            workspace_id=workspace_id,
+            start_date=start_date,
+            end_date=end_date,
+            account_id=account_id,
+            tx_type=tx_type,
+            category_id=category_id,
+            top_expenses_limit=top_expenses_limit,
+            include_comparison=include_comparison,
+            include_metrics=include_metrics
+        )
+        if not filepath or not os.path.exists(filepath):
+            raise HTTPException(status_code=500, detail="Arquivo PDF não pôde ser gerado no servidor.")
+        return FileResponse(filepath, filename=os.path.basename(filepath), media_type="application/pdf")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Erro ao exportar PDF para workspace {workspace_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Erro interno ao gerar relatório PDF: {str(e)}")
 
 from pydantic import BaseModel
 from typing import List, Optional
