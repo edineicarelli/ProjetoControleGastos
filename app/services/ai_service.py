@@ -21,14 +21,19 @@ logger = logging.getLogger(__name__)
 SYSTEM_PROMPT = """Você é o cérebro financeiro do Bot de Gestão Financeira Inteligente no Telegram.
 Sua missão é analisar mensagens dos usuários (texto livre, transcrição de áudios de voz ou fotos de cupons/recibos/notas fiscais/PDFs) e extrair os dados financeiros estruturados com máxima precisão.
 
+REGRA FUNDAMENTAL DE CLASSIFICAÇÃO DE INTENT:
+- Use `transaction_record` quando o pagamento JÁ FOI EFETUADO (palavras: "paguei", "comprei", "gastei", "efetuei", "quitei", "pago", "já paguei", "pix de X para Y", "lancei", "lancamento", "despesa de", "recebi", "ganhei", etc.)
+- Use `reminder_create` SOMENTE quando se trata de um pagamento FUTURO (palavras: "lembrar de pagar", "vence", "vencimento", "agendar", "próximo", "dia X" sem contexto de pagamento já feito)
+- Exemplos: "paguei a conta de luz 150" = transaction_record (expense). "conta de luz vence dia 15" = reminder_create.
+
 Você deve responder RIGOROSAMENTE em formato JSON com as chaves:
 - `intent`: Uma das opções: 'transaction_record', 'transaction_update', 'account_transfer', 'reminder_create', 'reminder_update', 'goal_action', 'vehicle_action', 'shopping_action', 'financial_query', 'profile_switch', 'general_chat'
-- `transactions`: Lista de transações encontradas se for transaction_record: [{"type": "expense" ou "income", "amount": float, "description": str, "category_name": str, "payment_method": str, "date_offset_days": int, "transaction_date": "YYYY-MM-DD" ou null, "items": [{"name": str, "quantity": float, "unit": str, "unit_price": float, "total_price": float, "category": str}]}]
+- `transactions`: Lista de transações encontradas se for transaction_record: [{"type": "expense" ou "income", "amount": float, "description": str, "category_name": str, "payment_method": str (SEMPRE uma string não-nula, use "Pix" como padrão se não especificado), "date_offset_days": int, "transaction_date": "YYYY-MM-DD" ou null, "items": [{"name": str, "quantity": float, "unit": str, "unit_price": float, "total_price": float, "category": str}]}]
   OBSERVAÇÕES SOBRE CUPONS, NOTAS E DOCUMENTOS:
   1. NOME DO ESTABELECIMENTO: Limpe termos jurídicos desnecessários (ex: 'SUPERMERCADOS ZORNITTA LTDA' -> 'Supermercados Zornitta', 'POSTO SHELL AUTO POSTO LTDA' -> 'Posto Shell').
   2. DATA DO DOCUMENTO: Se houver data de emissão impressa (ex: 19/09/2026), preencha `transaction_date` como "YYYY-MM-DD" e calcule `date_offset_days` em relação à data atual.
   3. DETALHAMENTO DE ITENS: Se o cupom/nota contiver produtos comprados, extraia TODOS os produtos na chave `items` com nome limpo (sem códigos de barras ou prefixos numéricos de SKU), quantidade exata (inclusive frações decimais como 0.534 kg), unidade correta ('kg' para itens pesados na balança como pão, queijo, carnes, hortifruti; 'un', 'pct', 'cx', 'l' para os demais), preço unitário e total.
-  4. FORMA DE PAGAMENTO: Detecte com precisão (Dinheiro, Pix, Cartão de Crédito, Cartão de Débito, Boleto, etc.).
+  4. FORMA DE PAGAMENTO: Detecte com precisão (Dinheiro, Pix, Cartão de Crédito, Cartão de Débito, Boleto, etc.). SEMPRE preencha com uma string — use "Pix" como padrão se não informado. NUNCA retorne null.
 - `transaction_update`: Se for transaction_update: {"description_query": str, "new_amount": float ou null, "new_date": "YYYY-MM-DD" ou null, "date_offset_days": int ou null}
 - `transfer`: Se for account_transfer: {"from_account": str, "to_account": str, "amount": float, "description": str}
 - `reminder`: Se for reminder_create (boletos a pagar, contas de consumo como água/luz/energia/gás/internet/aluguel): {"title": str, "amount": float, "type": "to_pay" ou "to_receive", "due_date": "YYYY-MM-DD", "recurrence": "none"|"monthly"|"weekly"}
@@ -221,10 +226,18 @@ class AIService:
         words = text_clean.split()
         if len(words) > 4:
             return False  # Sentenças mais longas ou conversacionais vão para IA
-        if "?" in text or "," in text or "." in text:
+        if "?" in text:
             return False
-        # Padrões estritos tipo: [Palavra Simples] [Número Inteiro] [Forma Opcional]
-        return bool(re.match(r"^[a-zA-ZÀ-ÿ]{2,20}\s+\d{1,6}(?:\s+(?:pix|dinheiro|debito|débito|credito|crédito|cartao|cartão))?$", text_clean, re.IGNORECASE))
+        # Aceita vírgula decimal (ex: "Almoço 35,50") mas não ponto ambíguo
+        text_normalized = text_clean.replace(",", ".")
+        # Padrões estritos tipo: [Palavra Simples] [Número] [Forma Opcional]
+        # Também aceita: [Número] [Palavra] (ex: "50 mercado", "100 gasolina")
+        pattern_word_num = r"^[a-zA-ZÀ-ÿ\s]{2,30}\s+\d{1,6}(?:[.,]\d{1,2})?(?:\s+(?:pix|dinheiro|debito|débito|credito|crédito|cartao|cartão))?$"
+        pattern_num_word = r"^\d{1,6}(?:[.,]\d{1,2})?\s+[a-zA-ZÀ-ÿ\s]{2,30}$"
+        return bool(
+            re.match(pattern_word_num, text_clean, re.IGNORECASE) or
+            re.match(pattern_num_word, text_clean, re.IGNORECASE)
+        )
 
     async def parse_text(self, text: str, user_context: Optional[Dict[str, Any]] = None) -> AIParsedResult:
         """Analisa mensagem de texto usando Fast-Path instantâneo ou Gemini ultra-rápido com fallback"""
@@ -245,9 +258,17 @@ class AIService:
             gemini_json = await self._call_gemini([{"text": prompt}])
             if gemini_json:
                 try:
+                    # Normaliza campos opcionais que o Gemini pode retornar como null
+                    if "transactions" in gemini_json and isinstance(gemini_json["transactions"], list):
+                        for tx in gemini_json["transactions"]:
+                            if isinstance(tx, dict):
+                                if not tx.get("payment_method"):
+                                    tx["payment_method"] = "Pix"
+                                if not tx.get("description"):
+                                    tx["description"] = "Despesa"
                     return AIParsedResult.model_validate(gemini_json)
                 except Exception as e:
-                    logger.error(f"Erro ao validar schema do Gemini: {e}")
+                    logger.error(f"Erro ao validar schema do Gemini (texto: {text!r}): {e} | JSON: {str(gemini_json)[:300]}")
 
         return self._fallback_parse_text(text)
 
@@ -743,7 +764,11 @@ class AIService:
             )
 
         # 7. Lembretes e Contas a Vencer (Criação)
-        if any(w in text_lower for w in ["lembrar", "vencimento", "vence", "conta de", "pagar internet", "pagar luz", "pagar aluguel", "pagar condomínio"]):
+        # Detecta se é um pagamento JÁ EFETUADO (ex: "paguei a conta de luz") vs lembrete futuro ("lembrar de pagar luz dia 10")
+        _is_already_paid = any(w in text_lower for w in [
+            "paguei", "já paguei", "efetuei", "quitei", "liquidei", "realizei"
+        ])
+        if any(w in text_lower for w in ["lembrar", "vencimento", "vence", "conta de", "pagar internet", "pagar luz", "pagar aluguel", "pagar condomínio"]) and not _is_already_paid:
             # Extrai dia
             dia_match = re.search(r"(?:dia\s*)(\d{1,2})", text_lower)
             dia = int(dia_match.group(1)) if dia_match else datetime.now().day
@@ -783,11 +808,11 @@ class AIService:
             ])
 
             cat = "Outros"
-            if any(w in text_lower for w in ["almoço", "almoco", "jantar", "lanche", "mercado", "padaria", "comida", "pizza", "hamburguer", "restaurante"]):
+            if any(w in text_lower for w in ["almoço", "almoco", "jantar", "lanche", "mercado", "padaria", "comida", "pizza", "hamburguer", "restaurante", "cafe", "café", "refeicao", "refeição"]):
                 cat = "Alimentação"
-            elif any(w in text_lower for w in ["uber", "gasolina", "combustivel", "combustível", "onibus", "metrô", "pedagio", "estacionamento"]):
+            elif any(w in text_lower for w in ["uber", "gasolina", "combustivel", "combustível", "onibus", "metrô", "pedagio", "estacionamento", "posto"]):
                 cat = "Transporte"
-            elif any(w in text_lower for w in ["aluguel", "luz", "agua", "água", "internet", "condominio", "condomínio", "gas", "gás"]):
+            elif any(w in text_lower for w in ["aluguel", "luz", "agua", "água", "internet", "condominio", "condomínio", "gas", "gás", "energia", "conta de"]):
                 cat = "Moradia"
             elif any(w in text_lower for w in ["farmacia", "farmácia", "remedio", "remédio", "medico", "médico", "dentista", "consulta"]):
                 cat = "Saúde"

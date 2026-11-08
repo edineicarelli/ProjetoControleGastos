@@ -16,7 +16,7 @@ class ExtractedTransaction(BaseModel):
     amount: float = Field(..., description="Valor numérico monetário em reais (ex: 45.90)")
     description: str = Field(..., description="Descrição resumida da despesa ou receita (ex: 'Supermercado CompreBem', 'Almoço no restaurante', 'Salário mensal')")
     category_name: str = Field("Outros", description="Nome da categoria sugerida (ex: Alimentação, Supermercado, Transporte, Saúde, Moradia, Salário, Lazer, etc.)")
-    payment_method: str = Field("Cartão de Crédito", description="Forma de pagamento inferida ou informada: Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, etc.")
+    payment_method: Optional[str] = Field("Pix", description="Forma de pagamento inferida ou informada: Pix, Cartão de Crédito, Cartão de Débito, Dinheiro, Boleto, etc.")
     date_offset_days: int = Field(0, description="Diferença de dias em relação a hoje: 0 para hoje, -1 para ontem, -2 para anteontem, etc.")
     transaction_date: Optional[str] = Field(None, description="Data da transação (YYYY-MM-DD) se informada ou impressa no cupom/documento")
     items: List[ExtractedTransactionItem] = Field(default_factory=list, description="Lista detalhada item a item dos produtos comprados no cupom/nota fiscal, se houver (ex: itens de mercado, farmácia, etc.)")
@@ -77,7 +77,7 @@ class ExtractedTransfer(BaseModel):
     description: Optional[str] = Field("Transferência entre contas", description="Descrição ou motivo da transferência")
 
 class AIParsedResult(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
     intent: Literal[
         "transaction_record",      # Lançamento de despesa ou receita
         "transaction_update",      # Alterar valor ou data de um lançamento efetivado existente

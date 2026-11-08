@@ -1155,6 +1155,9 @@ async def _apply_parsed_result(db, user, ws, parsed, receipt_url=None):
         last_tx = None
         
         for t in parsed.transactions:
+            # Normaliza payment_method nulo (Gemini às vezes retorna null)
+            if not t.payment_method:
+                t.payment_method = "Pix"
             if getattr(t, "transaction_date", None):
                 try:
                     date = datetime.datetime.strptime(t.transaction_date, "%Y-%m-%d")
